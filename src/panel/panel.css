@@ -1,0 +1,8 @@
+/* Panel stub styles — full implementation in Phase 8 */
+body {
+  font-family: 'Inter', system-ui, sans-serif;
+  font-weight: 300;
+  background: #111;
+  color: #eee;
+  margin: 0;
+}
