@@ -1,9 +1,23 @@
 import './options.css';
+import {
+  loadSettings,
+  saveProfile,
+  getActiveProfile,
+  exportData,
+  importData,
+  clearAllData,
+  patchSettings,
+} from '../storage/storage';
+import { createBlankProfile, type Profile } from '../storage/profile-schema';
+import { encrypt, decrypt, generateSalt } from '../storage/crypto';
+import { AppSettingsSchema } from '../storage/settings-schema';
+import type { AppSettings } from '../storage/settings-schema';
 
 type Tab =
   | 'profile'
   | 'education'
   | 'experience'
+  | 'skills'
   | 'documents'
   | 'qa'
   | 'ai'
@@ -11,240 +25,728 @@ type Tab =
   | 'import-export';
 
 const TABS: { id: Tab; label: string; icon: string; group: string }[] = [
-  { id: 'profile',        label: 'Personal Info',   icon: iconUser(),     group: 'Profile' },
-  { id: 'education',      label: 'Education',        icon: iconBook(),     group: 'Profile' },
-  { id: 'experience',     label: 'Experience',       icon: iconBriefcase(),group: 'Profile' },
-  { id: 'documents',      label: 'Documents',        icon: iconFile(),     group: 'Resources' },
-  { id: 'qa',             label: 'Q&A Bank',         icon: iconChat(),     group: 'Resources' },
-  { id: 'ai',             label: 'AI Settings',      icon: iconSpark(),    group: 'Settings' },
-  { id: 'privacy',        label: 'Privacy',          icon: iconShield(),   group: 'Settings' },
-  { id: 'import-export',  label: 'Import / Export',  icon: iconArrows(),   group: 'Settings' },
+  { id: 'profile',       label: 'Personal Info',  icon: iconUser(),      group: 'Profile' },
+  { id: 'education',     label: 'Education',       icon: iconBook(),      group: 'Profile' },
+  { id: 'experience',    label: 'Experience',      icon: iconBriefcase(), group: 'Profile' },
+  { id: 'skills',        label: 'Skills & More',   icon: iconStar(),      group: 'Profile' },
+  { id: 'documents',     label: 'Documents',       icon: iconFile(),      group: 'Resources' },
+  { id: 'qa',            label: 'Q&A Bank',        icon: iconChat(),      group: 'Resources' },
+  { id: 'ai',            label: 'AI Settings',     icon: iconSpark(),     group: 'Settings' },
+  { id: 'privacy',       label: 'Privacy',         icon: iconShield(),    group: 'Settings' },
+  { id: 'import-export', label: 'Import / Export', icon: iconArrows(),    group: 'Settings' },
 ];
 
-function iconUser()      { return svgIcon('M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2M12 3a4 4 0 100 8 4 4 0 000-8z'); }
-function iconBook()      { return svgIcon('M4 19.5A2.5 2.5 0 016.5 17H20M4 19.5A2.5 2.5 0 004 17V5a2 2 0 012-2h12a2 2 0 012 2v12M4 19.5V20'); }
-function iconBriefcase() { return svgIcon('M21 16V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2h14a2 2 0 002-2zM1 10h22M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2'); }
-function iconFile()      { return svgIcon('M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8zM14 2v6h6M16 13H8M16 17H8M10 9H8'); }
-function iconChat()      { return svgIcon('M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z'); }
-function iconSpark()     { return svgIcon('M13 2L3 14h9l-1 8 10-12h-9l1-8z'); }
-function iconShield()    { return svgIcon('M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z'); }
-function iconArrows()    { return svgIcon('M7 16V4m0 0L3 8m4-4l4 4M17 8v12m0 0l4-4m-4 4l-4-4'); }
+// SVG helpers
+function svg(d: string | string[], extra = '') {
+  const paths = Array.isArray(d) ? d : [d];
+  return `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" ${extra}>${paths.map(p => `<path d="${p}"/>`).join('')}</svg>`;
+}
+function iconUser()      { return svg('M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2M12 3a4 4 0 100 8 4 4 0 000-8z'); }
+function iconBook()      { return svg('M4 19.5A2.5 2.5 0 016.5 17H20M4 19.5A2.5 2.5 0 004 17V5a2 2 0 012-2h12a2 2 0 012 2v12M4 19.5V20'); }
+function iconBriefcase() { return svg(['M21 16V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2h14a2 2 0 002-2z', 'M1 10h22', 'M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2']); }
+function iconStar()      { return svg('M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z'); }
+function iconFile()      { return svg(['M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z', 'M14 2v6h6', 'M16 13H8', 'M16 17H8', 'M10 9H8']); }
+function iconChat()      { return svg('M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z'); }
+function iconSpark()     { return svg('M13 2L3 14h9l-1 8 10-12h-9l1-8z'); }
+function iconShield()    { return svg('M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z'); }
+function iconArrows()    { return svg(['M7 16V4m0 0L3 8m4-4l4 4', 'M17 8v12m0 0l4-4m-4 4l-4-4']); }
+function iconPlus()      { return svg(['M12 5v14', 'M5 12h14']); }
+function iconTrash()     { return svg(['M3 6h18', 'M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2']); }
+// iconCheck reserved for Phase 7
+function iconSave()      { return svg(['M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z', 'M17 21v-8H7v8', 'M7 3v5h8']); }
 
-function svgIcon(d: string) {
-  return `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="${d}"/></svg>`;
+// ── State ──────────────────────────────────────────────────────────────────
+let activeTab: Tab = 'profile';
+let activeProfile: Profile;
+let settings: AppSettings;
+let sessionPassphrase = ''; // in-memory only, never persisted as plaintext
+
+// ── Render helpers ─────────────────────────────────────────────────────────
+function field(id: string, label: string, type: 'text' | 'email' | 'tel' | 'url' | 'password' | 'date' | 'number', value = '', placeholder = '', extra = '') {
+  return `<div class="field">
+    <label class="field-label" for="${id}">${label}</label>
+    <input id="${id}" type="${type}" value="${esc(value)}" placeholder="${esc(placeholder)}" ${extra} />
+  </div>`;
 }
 
-function buildSidebar(activeTab: Tab): string {
-  const groups = [...new Set(TABS.map((t) => t.group))];
-  const navItems = groups
-    .map((group) => {
-      const items = TABS.filter((t) => t.group === group);
-      return `
+function selectField(id: string, label: string, options: string[], value = '') {
+  return `<div class="field">
+    <label class="field-label" for="${id}">${label}</label>
+    <select id="${id}">
+      <option value="">— select —</option>
+      ${options.map(o => `<option value="${esc(o)}" ${o === value ? 'selected' : ''}>${esc(o)}</option>`).join('')}
+    </select>
+  </div>`;
+}
+
+function textareaField(id: string, label: string, value = '', placeholder = '') {
+  return `<div class="field">
+    <label class="field-label" for="${id}">${label}</label>
+    <textarea id="${id}" placeholder="${esc(placeholder)}">${esc(value)}</textarea>
+  </div>`;
+}
+
+function esc(s: string) {
+  return s.replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function toast(msg: string, type: 'success' | 'error' = 'success') {
+  const el = document.createElement('div');
+  el.className = `toast toast-${type}`;
+  el.textContent = msg;
+  document.body.appendChild(el);
+  setTimeout(() => el.classList.add('toast-visible'), 10);
+  setTimeout(() => { el.classList.remove('toast-visible'); setTimeout(() => el.remove(), 300); }, 2500);
+}
+
+// ── Sidebar ────────────────────────────────────────────────────────────────
+function buildSidebar(): string {
+  const groups = [...new Set(TABS.map(t => t.group))];
+  return `<aside class="sidebar">
+    <div class="sidebar-header">
+      <div class="logo">
+        <svg viewBox="0 0 16 16" fill="none"><path d="M3 4h10M3 8h7M3 12h5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+      </div>
+      <span class="wordmark">wayfill</span>
+    </div>
+    <nav class="nav">
+      ${groups.map(group => `
         <div class="nav-section-label">${group}</div>
-        ${items
-          .map(
-            (t) => `
-          <button class="nav-item ${t.id === activeTab ? 'active' : ''}" data-tab="${t.id}">
-            ${t.icon}
-            ${t.label}
-          </button>`
-          )
-          .join('')}
-      `;
-    })
-    .join('');
+        ${TABS.filter(t => t.group === group).map(t => `
+          <button class="nav-item ${t.id === activeTab ? 'active' : ''}" data-tab="${t.id}" aria-current="${t.id === activeTab ? 'page' : 'false'}">
+            ${t.icon} ${t.label}
+          </button>`).join('')}
+      `).join('')}
+    </nav>
+    <div class="sidebar-footer">Wayfill v0.1.0</div>
+  </aside>`;
+}
+
+// ── Tab: Personal Info ─────────────────────────────────────────────────────
+function renderProfile(): string {
+  const p = activeProfile.personal;
+  const w = activeProfile.workAuth;
+  const e = activeProfile.eeo;
+  const c = activeProfile.common;
+  const i = activeProfile.internAvail;
+  const pay = activeProfile.pay;
 
   return `
-    <aside class="sidebar">
-      <div class="sidebar-header">
-        <div class="logo">
-          <svg viewBox="0 0 16 16" fill="none">
-            <path d="M3 4h10M3 8h7M3 12h5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-          </svg>
-        </div>
-        <span class="wordmark">wayfill</span>
+    <h1 class="page-title">Personal Information</h1>
+    <p class="page-subtitle">Your details autofilled into applications. Never shared externally.</p>
+
+    <div class="section-card">
+      <div class="section-card-title">Basic info</div>
+      <div class="field-grid">
+        ${field('p-firstName','First name','text',p.firstName,'Jane')}
+        ${field('p-lastName','Last name','text',p.lastName,'Smith')}
+        ${field('p-email','Email','email',p.email,'jane@example.com')}
+        ${field('p-phone','Phone','tel',p.phone,'(555) 000-0000')}
+        ${field('p-city','City','text',p.city,'San Francisco')}
+        ${field('p-state','State','text',p.state,'CA')}
+        ${field('p-zip','ZIP','text',p.zip,'94105')}
+        ${field('p-country','Country','text',p.country,'United States')}
+        ${field('p-address1','Street address','text',p.address1??'','')}
+        ${field('p-address2','Apt / Suite','text',p.address2??'','')}
       </div>
-      <nav class="nav">${navItems}</nav>
-      <div class="sidebar-footer">v0.1.0 — Phase 1</div>
-    </aside>
+    </div>
+
+    <div class="section-card">
+      <div class="section-card-title">Online presence</div>
+      <div class="field-grid">
+        ${field('p-linkedin','LinkedIn','url',p.linkedin??'','https://linkedin.com/in/…')}
+        ${field('p-github','GitHub','url',p.github??'','https://github.com/…')}
+        ${field('p-portfolio','Portfolio','url',p.portfolio??'','https://…')}
+        ${field('p-otherLink','Other link','url',p.otherLink??'','https://…')}
+      </div>
+      <div class="field-grid cols-1" style="margin-top:14px">
+        ${textareaField('p-summary','Professional summary',p.summary??'','A brief pitch for text fields that ask for a summary…')}
+      </div>
+    </div>
+
+    <div class="section-card">
+      <div class="section-card-title">Work authorization</div>
+      <div class="field-grid">
+        ${selectField('w-authorized','Authorized to work in U.S.?',['Yes','No'],w.authorized??'')}
+        ${selectField('w-sponsorshipNow','Require sponsorship now?',['Yes','No'],w.sponsorshipNow??'')}
+        ${selectField('w-sponsorshipFuture','Require sponsorship in future?',['Yes','No'],w.sponsorshipFuture??'')}
+        ${field('w-visaType','Visa type','text',w.visaType??'','H-1B, OPT, F-1, etc.')}
+        ${selectField('w-over18','Age 18 or older?',['Yes','No'],w.over18??'')}
+        ${selectField('w-clearance','Security clearance',['None','Secret','Top Secret','TS/SCI'],w.clearance??'')}
+      </div>
+    </div>
+
+    <div class="section-card">
+      <div class="section-card-title">Internship &amp; availability</div>
+      <div class="field-grid">
+        ${field('i-startDate','Available from','date',i.startDate??'')}
+        ${field('i-endDate','Available until','date',i.endDate??'')}
+        ${field('i-hoursPerWeek','Hours per week','number',i.hoursPerWeek?.toString()??'','40')}
+        ${selectField('i-relocation','Open to relocation?',['Yes','No','Maybe'],i.relocation??'')}
+        ${selectField('i-workMode','Work mode',['Remote','Hybrid','On-site','Any'],i.workMode??'')}
+        ${selectField('i-travel','Travel willingness',['0%','25%','50%','75%','100%'],i.travel??'')}
+      </div>
+    </div>
+
+    <div class="section-card">
+      <div class="section-card-title">Pay expectations</div>
+      <div class="field-grid">
+        ${field('pay-minimum','Minimum acceptable','text',pay.minimum??'','e.g. 80000')}
+        ${field('pay-desired','Desired compensation','text',pay.desired??'','e.g. 110000')}
+        ${selectField('pay-currency','Currency',['USD','CAD','GBP','EUR'],pay.currency)}
+        ${selectField('pay-period','Period',['annual','hourly'],pay.period)}
+      </div>
+    </div>
+
+    <div class="section-card">
+      <div class="section-card-title">Common questions</div>
+      <div class="field-grid">
+        ${selectField('c-previousEmployee','Previous employee?',['Yes','No'],c.previousEmployee??'')}
+        ${selectField('c-relativesAtCompany','Relatives at company?',['Yes','No'],c.relativesAtCompany??'')}
+        ${selectField('c-backgroundCheck','Consent to background check?',['Yes','No'],c.backgroundCheck??'')}
+        ${selectField('c-drugTest','Consent to drug test?',['Yes','No'],c.drugTest??'')}
+        ${selectField('c-nonCompete','Currently under non-compete?',['Yes','No'],c.nonCompete??'')}
+        ${field('c-referralSource','How did you hear about us?','text',c.referralSource??'','LinkedIn, Indeed, etc.')}
+      </div>
+    </div>
+
+    <div class="section-card eeo-card">
+      <div class="section-card-title">
+        EEO self-identification
+        <span class="badge-muted">optional — defaults to Decline</span>
+      </div>
+      <p class="field-hint">These answers are used <strong>only</strong> for EEO forms. They are never sent to the AI.</p>
+      <div class="field-grid">
+        ${selectField('eeo-gender','Gender',['Decline to self-identify','Male','Female','Non-binary','Prefer to self-describe'],e.gender)}
+        ${selectField('eeo-race','Race / Ethnicity',['Decline to self-identify','Hispanic/Latino','White','Black/African American','Asian','Native American/Alaska Native','Pacific Islander','Two or more races'],e.race)}
+        ${selectField('eeo-veteran','Veteran status',['Decline to self-identify','I identify as one or more classifications of protected veteran','I am not a protected veteran'],e.veteran)}
+        ${selectField('eeo-disability','Disability status',['Decline to self-identify','Yes, I have a disability (or previously had a disability)','No, I don\'t have a disability'],e.disability)}
+      </div>
+    </div>
+
+    <div class="btn-row">
+      <button class="btn btn-primary" id="save-profile-btn">${iconSave()} Save profile</button>
+      <span class="save-status" id="save-status"></span>
+    </div>
   `;
 }
 
-function renderTabContent(tab: Tab): string {
-  switch (tab) {
-    case 'profile':
-      return `
-        <h1 class="page-title">Personal Information</h1>
-        <p class="page-subtitle">Your details autofilled into job applications. Never shared externally.</p>
-
-        <div class="section-card">
-          <div class="section-card-title">Basic info</div>
-          <div class="field-grid">
-            <div class="field"><label class="field-label">First name</label><input id="first-name" type="text" placeholder="Jane" /></div>
-            <div class="field"><label class="field-label">Last name</label><input id="last-name" type="text" placeholder="Smith" /></div>
-            <div class="field"><label class="field-label">Email</label><input id="email" type="email" placeholder="jane@example.com" /></div>
-            <div class="field"><label class="field-label">Phone</label><input id="phone" type="tel" placeholder="(555) 000-0000" /></div>
-            <div class="field"><label class="field-label">City</label><input id="city" type="text" placeholder="San Francisco" /></div>
-            <div class="field"><label class="field-label">State</label><input id="state" type="text" placeholder="CA" /></div>
-            <div class="field"><label class="field-label">ZIP code</label><input id="zip" type="text" placeholder="94105" /></div>
-            <div class="field"><label class="field-label">Country</label><input id="country" type="text" placeholder="United States" /></div>
+// ── Tab: Education ─────────────────────────────────────────────────────────
+function renderEducation(): string {
+  const entries = activeProfile.education;
+  return `
+    <h1 class="page-title">Education</h1>
+    <p class="page-subtitle">Add all degrees. The first entry is used as the default.</p>
+    <div id="education-list">
+      ${entries.map((e, i) => `
+        <div class="section-card entry-card" data-entry-id="${e.id}">
+          <div class="entry-header">
+            <span class="entry-num">Education ${i + 1}</span>
+            <button class="btn btn-ghost btn-sm delete-entry" data-type="education" data-id="${e.id}" aria-label="Delete entry">${iconTrash()}</button>
           </div>
-        </div>
-
-        <div class="section-card">
-          <div class="section-card-title">Links</div>
           <div class="field-grid">
-            <div class="field"><label class="field-label">LinkedIn</label><input id="linkedin" type="url" placeholder="https://linkedin.com/in/…" /></div>
-            <div class="field"><label class="field-label">GitHub</label><input id="github" type="url" placeholder="https://github.com/…" /></div>
-            <div class="field"><label class="field-label">Portfolio</label><input id="portfolio" type="url" placeholder="https://…" /></div>
-            <div class="field"><label class="field-label">Other link</label><input id="other-link" type="url" placeholder="https://…" /></div>
+            ${field(`edu-institution-${e.id}`,'Institution','text',e.institution,'MIT, Stanford, etc.')}
+            ${field(`edu-degree-${e.id}`,'Degree','text',e.degree,'B.S., M.S., Ph.D.')}
+            ${field(`edu-field-${e.id}`,'Field of study','text',e.field,'Computer Science')}
+            ${field(`edu-gpa-${e.id}`,'GPA','text',e.gpa??'','3.8')}
+            ${field(`edu-startDate-${e.id}`,'Start date','date',e.startDate??'')}
+            ${field(`edu-endDate-${e.id}`,'End / Expected date','date',e.endDate??'')}
           </div>
-        </div>
+        </div>`).join('')}
+    </div>
+    <div class="btn-row">
+      <button class="btn btn-ghost" id="add-education">${iconPlus()} Add education</button>
+      <button class="btn btn-primary" id="save-education-btn">${iconSave()} Save</button>
+    </div>
+  `;
+}
 
-        <div class="section-card">
-          <div class="section-card-title">Work authorization</div>
+// ── Tab: Experience ────────────────────────────────────────────────────────
+function renderExperience(): string {
+  const entries = activeProfile.experience;
+  return `
+    <h1 class="page-title">Work Experience</h1>
+    <p class="page-subtitle">List positions chronologically. Most recent first.</p>
+    <div id="experience-list">
+      ${entries.map((e, i) => `
+        <div class="section-card entry-card" data-entry-id="${e.id}">
+          <div class="entry-header">
+            <span class="entry-num">Position ${i + 1}</span>
+            <button class="btn btn-ghost btn-sm delete-entry" data-type="experience" data-id="${e.id}" aria-label="Delete entry">${iconTrash()}</button>
+          </div>
           <div class="field-grid">
-            <div class="field"><label class="field-label">Authorized to work in the U.S.?</label><select id="authorized"><option value="">— select —</option><option>Yes</option><option>No</option></select></div>
-            <div class="field"><label class="field-label">Require sponsorship now?</label><select id="sponsorship-now"><option value="">— select —</option><option>Yes</option><option>No</option></select></div>
-            <div class="field"><label class="field-label">Require sponsorship in future?</label><select id="sponsorship-future"><option value="">— select —</option><option>Yes</option><option>No</option></select></div>
-            <div class="field"><label class="field-label">Visa type (if applicable)</label><input id="visa-type" type="text" placeholder="H-1B, OPT, etc." /></div>
-            <div class="field"><label class="field-label">Age 18+?</label><select id="over-18"><option value="">— select —</option><option>Yes</option><option>No</option></select></div>
-            <div class="field"><label class="field-label">Security clearance</label><select id="clearance"><option value="">— select —</option><option>None</option><option>Secret</option><option>Top Secret</option><option>TS/SCI</option></select></div>
+            ${field(`exp-company-${e.id}`,'Company','text',e.company,'Acme Corp')}
+            ${field(`exp-title-${e.id}`,'Job title','text',e.title,'Software Engineer')}
+            ${field(`exp-location-${e.id}`,'Location','text',e.location??'','San Francisco, CA')}
+            ${field(`exp-startDate-${e.id}`,'Start date','date',e.startDate??'')}
+            ${field(`exp-endDate-${e.id}`,'End date','date',e.endDate??'')}
           </div>
-        </div>
-
-        <div class="section-card">
-          <div class="section-card-title">EEO self-identification <span style="font-size:10px;color:var(--muted);font-weight:300;">(optional — defaults to Decline)</span></div>
-          <div class="field-grid">
-            <div class="field"><label class="field-label">Gender</label><select id="eeo-gender"><option>Decline to self-identify</option><option>Male</option><option>Female</option><option>Non-binary</option></select></div>
-            <div class="field"><label class="field-label">Race/Ethnicity</label><select id="eeo-race"><option>Decline to self-identify</option><option>Hispanic/Latino</option><option>White</option><option>Black/African American</option><option>Asian</option><option>Native American</option><option>Pacific Islander</option><option>Two or more races</option></select></div>
-            <div class="field"><label class="field-label">Veteran status</label><select id="eeo-veteran"><option>Decline to self-identify</option><option>I identify as one or more of the classifications of protected veteran</option><option>I am not a protected veteran</option></select></div>
-            <div class="field"><label class="field-label">Disability status</label><select id="eeo-disability"><option>Decline to self-identify</option><option>Yes, I have a disability</option><option>No, I don't have a disability</option></select></div>
+          <div class="field-grid cols-1" style="margin-top:10px">
+            ${textareaField(`exp-desc-${e.id}`,'Description / bullets',e.description??'','• Built feature X that improved Y by Z…')}
           </div>
-        </div>
+        </div>`).join('')}
+    </div>
+    <div class="btn-row">
+      <button class="btn btn-ghost" id="add-experience">${iconPlus()} Add position</button>
+      <button class="btn btn-primary" id="save-experience-btn">${iconSave()} Save</button>
+    </div>
+  `;
+}
 
-        <div class="btn-row">
-          <button class="btn btn-primary" id="save-profile">Save profile</button>
+// ── Tab: Skills ────────────────────────────────────────────────────────────
+function renderSkills(): string {
+  return `
+    <h1 class="page-title">Skills, Certifications &amp; Languages</h1>
+    <p class="page-subtitle">Comma-separated lists used for keyword matching and resume gap analysis.</p>
+    <div class="section-card">
+      <div class="section-card-title">Technical &amp; soft skills</div>
+      <div class="field-grid cols-1">
+        <div class="field">
+          <label class="field-label" for="skills-input">Skills (comma-separated)</label>
+          <textarea id="skills-input" rows="3" placeholder="TypeScript, React, Python, SQL, Communication…">${activeProfile.skills.join(', ')}</textarea>
         </div>
-      `;
-
-    case 'education':
-      return `
-        <h1 class="page-title">Education</h1>
-        <p class="page-subtitle">Add one or more education entries. The first is used as the default.</p>
-        <div class="coming-soon">
-          ${svgIcon('M12 14l9-5-9-5-9 5 9 5z')}
-          <p>Education section — coming in Phase 2</p>
+      </div>
+    </div>
+    <div class="section-card">
+      <div class="section-card-title">Certifications</div>
+      <div class="field-grid cols-1">
+        <div class="field">
+          <label class="field-label" for="certs-input">Certifications (comma-separated)</label>
+          <textarea id="certs-input" rows="2" placeholder="AWS Solutions Architect, PMP, CPA…">${activeProfile.certifications.join(', ')}</textarea>
         </div>
-      `;
-
-    case 'experience':
-      return `
-        <h1 class="page-title">Work Experience</h1>
-        <p class="page-subtitle">Positions autofilled into repeating work history sections.</p>
-        <div class="coming-soon">
-          ${svgIcon('M21 16V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2h14a2 2 0 002-2z')}
-          <p>Experience section — coming in Phase 2</p>
+      </div>
+    </div>
+    <div class="section-card">
+      <div class="section-card-title">Languages</div>
+      <div class="field-grid cols-1">
+        <div class="field">
+          <label class="field-label" for="langs-input">Languages spoken (comma-separated)</label>
+          <textarea id="langs-input" rows="2" placeholder="English (native), Spanish (professional)…">${activeProfile.languages.join(', ')}</textarea>
         </div>
-      `;
+      </div>
+    </div>
+    <div class="btn-row">
+      <button class="btn btn-primary" id="save-skills-btn">${iconSave()} Save</button>
+    </div>
+  `;
+}
 
-    case 'documents':
-      return `
-        <h1 class="page-title">Documents</h1>
-        <p class="page-subtitle">Store resumes, cover letters, transcripts, and certifications (PDF/DOCX, up to 10 MB).</p>
-        <div class="coming-soon">
-          ${iconFile()}
-          <p>Document store — coming in Phase 6</p>
-        </div>
-      `;
-
-    case 'qa':
-      return `
-        <h1 class="page-title">Q&A Bank</h1>
-        <p class="page-subtitle">Custom answers for open-ended questions, with variants and fuzzy matching.</p>
-        <div class="coming-soon">
-          ${iconChat()}
-          <p>Q&A bank — coming in Phase 2</p>
-        </div>
-      `;
-
-    case 'ai':
-      return `
-        <h1 class="page-title">AI Settings</h1>
-        <p class="page-subtitle">Wayfill uses your own Anthropic API key. It never sends your data to any server except Anthropic's, and only when you click "Analyze this job".</p>
-        <div class="section-card">
-          <div class="section-card-title">Anthropic API key</div>
+// ── Tab: Q&A Bank ──────────────────────────────────────────────────────────
+function renderQA(): string {
+  const qa = activeProfile.qa;
+  return `
+    <h1 class="page-title">Q&amp;A Bank</h1>
+    <p class="page-subtitle">Saved answers for open-ended questions. The AI uses these to generate tailored responses.</p>
+    <div id="qa-list">
+      ${qa.map((q, i) => `
+        <div class="section-card entry-card" data-entry-id="${q.id}">
+          <div class="entry-header">
+            <span class="entry-num">Answer ${i + 1}</span>
+            <button class="btn btn-ghost btn-sm delete-entry" data-type="qa" data-id="${q.id}">${iconTrash()}</button>
+          </div>
           <div class="field-grid cols-1">
-            <div class="field">
-              <label class="field-label">API key</label>
-              <input id="anthropic-key" type="password" placeholder="sk-ant-…" />
-            </div>
-            <div class="field">
-              <label class="field-label">Model</label>
-              <input id="ai-model" type="text" value="claude-sonnet-4-6" />
-            </div>
+            ${field(`qa-question-${q.id}`,'Question / keyword','text',q.question,'Why do you want to work here?')}
+            ${textareaField(`qa-answer-${q.id}`,'Your answer',q.answer,'I am drawn to this company because…')}
+            ${field(`qa-keywords-${q.id}`,'Match keywords (comma-separated)','text',q.keywords.join(', '),'why, motivation, fit')}
           </div>
-          <div class="btn-row">
-            <button class="btn btn-primary" id="save-ai">Save AI settings</button>
-          </div>
-        </div>
-        <div class="coming-soon" style="padding:20px 0 0">
-          ${iconSpark()}
-          <p>Full AI assistant — coming in Phase 8</p>
-        </div>
-      `;
+        </div>`).join('')}
+    </div>
+    <div class="btn-row">
+      <button class="btn btn-ghost" id="add-qa">${iconPlus()} Add answer</button>
+      <button class="btn btn-primary" id="save-qa-btn">${iconSave()} Save</button>
+    </div>
+  `;
+}
 
-    case 'privacy':
-      return `
-        <h1 class="page-title">Privacy</h1>
-        <p class="page-subtitle">Wayfill stores all data locally in your browser. No analytics, no remote code.</p>
-        <div class="section-card">
-          <div class="section-card-title">Passphrase encryption</div>
-          <div class="field-grid cols-1">
-            <div class="field">
-              <label class="field-label">Passphrase (AES-GCM encryption for sensitive fields)</label>
-              <input id="passphrase" type="password" placeholder="Leave blank to disable encryption" />
-            </div>
-          </div>
-          <div class="btn-row">
-            <button class="btn btn-primary" id="save-passphrase">Set passphrase</button>
-            <button class="btn btn-danger" id="clear-passphrase">Clear passphrase</button>
-          </div>
-        </div>
-        <div class="coming-soon" style="padding:20px 0 0">
-          ${iconShield()}
-          <p>Full privacy controls — coming in Phase 2</p>
-        </div>
-      `;
+// ── Tab: Documents ─────────────────────────────────────────────────────────
+function renderDocuments(): string {
+  return `
+    <h1 class="page-title">Documents</h1>
+    <p class="page-subtitle">Store resumes, cover letters, transcripts, and certifications (PDF/DOCX ≤ 10 MB).</p>
+    <div class="coming-soon">
+      ${iconFile()}
+      <p>Document store — implemented in Phase 6</p>
+    </div>
+  `;
+}
 
-    case 'import-export':
-      return `
-        <h1 class="page-title">Import / Export</h1>
-        <p class="page-subtitle">Back up your profile as JSON or restore from a previous export.</p>
-        <div class="coming-soon">
-          ${iconArrows()}
-          <p>Import/export — coming in Phase 2</p>
-        </div>
-      `;
+// ── Tab: AI Settings ───────────────────────────────────────────────────────
+function renderAI(): string {
+  return `
+    <h1 class="page-title">AI Settings</h1>
+    <p class="page-subtitle">Wayfill uses your own Anthropic API key. No data is ever sent unless you click "Analyze this job".</p>
+    <div class="section-card">
+      <div class="section-card-title">Anthropic API key</div>
+      <div class="field-grid cols-1">
+        ${field('ai-key','API key','password','','sk-ant-…')}
+        ${field('ai-model','Model','text',settings.anthropicModel,'claude-sonnet-4-6')}
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-primary" id="save-ai-btn">${iconSave()} Save AI settings</button>
+        <button class="btn btn-ghost" id="test-ai-btn">Test connection</button>
+      </div>
+    </div>
+    <div class="section-card" style="margin-top:16px">
+      <div class="section-card-title">Privacy reminder</div>
+      <p class="field-hint">The AI call sends only the visible job posting text and a minimal subset of your profile (no EEO, no SSN-like data). A preview is shown before the first call on each site.</p>
+    </div>
+  `;
+}
+
+// ── Tab: Privacy ───────────────────────────────────────────────────────────
+function renderPrivacy(): string {
+  return `
+    <h1 class="page-title">Privacy &amp; Security</h1>
+    <p class="page-subtitle">All data is stored locally. The only network traffic is user-initiated Anthropic API calls.</p>
+
+    <div class="section-card">
+      <div class="section-card-title">Passphrase encryption (AES-GCM)</div>
+      <p class="field-hint">When set, your Anthropic API key is encrypted with AES-GCM using a PBKDF2-derived key. The passphrase is never stored.</p>
+      <div class="field-grid cols-1">
+        ${field('privacy-pass','New passphrase','password','','Leave blank to disable encryption')}
+        ${field('privacy-pass-confirm','Confirm passphrase','password','','')}
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-primary" id="set-passphrase-btn">${iconShield()} Set passphrase</button>
+        <button class="btn btn-danger" id="clear-passphrase-btn">Clear passphrase</button>
+      </div>
+      <p class="status-badge ${settings.encryptionEnabled ? 'badge-green' : 'badge-muted'}" id="encryption-status">
+        ${settings.encryptionEnabled ? '🔒 Encryption active' : '🔓 Encryption off'}
+      </p>
+    </div>
+
+    <div class="section-card" style="margin-top:16px">
+      <div class="section-card-title">Data management</div>
+      <div class="btn-row">
+        <button class="btn btn-danger" id="clear-all-btn">Delete all data</button>
+      </div>
+    </div>
+  `;
+}
+
+// ── Tab: Import / Export ───────────────────────────────────────────────────
+function renderImportExport(): string {
+  return `
+    <h1 class="page-title">Import / Export</h1>
+    <p class="page-subtitle">Back up or restore your entire Wayfill profile as JSON. The Anthropic API key is never included in exports.</p>
+
+    <div class="section-card">
+      <div class="section-card-title">Export</div>
+      <p class="field-hint">Downloads a wayfill-export.json file with all profiles and settings.</p>
+      <div class="btn-row">
+        <button class="btn btn-primary" id="export-btn">${iconArrows()} Export profile</button>
+      </div>
+    </div>
+
+    <div class="section-card" style="margin-top:16px">
+      <div class="section-card-title">Import</div>
+      <p class="field-hint">Select a previously exported wayfill-export.json. This merges profiles — it does not delete existing ones.</p>
+      <div class="btn-row">
+        <label class="btn btn-ghost" style="cursor:pointer">
+          ${iconArrows()} Choose file
+          <input type="file" id="import-file" accept=".json" style="display:none" />
+        </label>
+      </div>
+      <p class="save-status" id="import-status"></p>
+    </div>
+  `;
+}
+
+// ── Tab router ─────────────────────────────────────────────────────────────
+function renderTabContent(): string {
+  switch (activeTab) {
+    case 'profile':       return renderProfile();
+    case 'education':     return renderEducation();
+    case 'experience':    return renderExperience();
+    case 'skills':        return renderSkills();
+    case 'documents':     return renderDocuments();
+    case 'qa':            return renderQA();
+    case 'ai':            return renderAI();
+    case 'privacy':       return renderPrivacy();
+    case 'import-export': return renderImportExport();
   }
 }
 
-function render(activeTab: Tab = 'profile') {
+// ── Full render ────────────────────────────────────────────────────────────
+function render() {
   const app = document.getElementById('app')!;
   app.innerHTML = `
-    ${buildSidebar(activeTab)}
-    <main class="main" id="main-content">
-      ${renderTabContent(activeTab)}
-    </main>
+    ${buildSidebar()}
+    <main class="main" id="main-content">${renderTabContent()}</main>
   `;
+  attachHandlers();
+}
 
-  // Nav item clicks
-  app.querySelectorAll<HTMLButtonElement>('.nav-item').forEach((btn) => {
+// ── Value readers ──────────────────────────────────────────────────────────
+function val(id: string) {
+  return (document.getElementById(id) as HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement | null)?.value ?? '';
+}
+
+// ── Event handlers ─────────────────────────────────────────────────────────
+function attachHandlers() {
+  // Nav
+  document.querySelectorAll<HTMLButtonElement>('.nav-item').forEach(btn => {
     btn.addEventListener('click', () => {
-      const tab = btn.dataset['tab'] as Tab;
-      render(tab);
+      activeTab = btn.dataset['tab'] as Tab;
+      render();
+    });
+  });
+
+  switch (activeTab) {
+    case 'profile':       attachProfileHandlers(); break;
+    case 'education':     attachEducationHandlers(); break;
+    case 'experience':    attachExperienceHandlers(); break;
+    case 'skills':        attachSkillsHandlers(); break;
+    case 'qa':            attachQAHandlers(); break;
+    case 'ai':            attachAIHandlers(); break;
+    case 'privacy':       attachPrivacyHandlers(); break;
+    case 'import-export': attachImportExportHandlers(); break;
+    default: break;
+  }
+}
+
+// ── Profile handlers ───────────────────────────────────────────────────────
+function attachProfileHandlers() {
+  document.getElementById('save-profile-btn')?.addEventListener('click', () => {
+    void (async () => {
+      activeProfile.personal = {
+        firstName: val('p-firstName'), lastName: val('p-lastName'),
+        email: val('p-email'), phone: val('p-phone'),
+        city: val('p-city'), state: val('p-state'), zip: val('p-zip'),
+        country: val('p-country'), address1: val('p-address1') || undefined,
+        address2: val('p-address2') || undefined,
+        linkedin: val('p-linkedin') || undefined, github: val('p-github') || undefined,
+        portfolio: val('p-portfolio') || undefined, otherLink: val('p-otherLink') || undefined,
+        summary: val('p-summary') || undefined,
+      };
+      activeProfile.workAuth = {
+        authorized: val('w-authorized') || undefined, sponsorshipNow: val('w-sponsorshipNow') || undefined,
+        sponsorshipFuture: val('w-sponsorshipFuture') || undefined, visaType: val('w-visaType') || undefined,
+        over18: val('w-over18') || undefined, clearance: val('w-clearance') || undefined,
+      };
+      activeProfile.internAvail = {
+        startDate: val('i-startDate') || undefined, endDate: val('i-endDate') || undefined,
+        hoursPerWeek: val('i-hoursPerWeek') ? Number(val('i-hoursPerWeek')) : undefined,
+        relocation: val('i-relocation') || undefined, workMode: val('i-workMode') || undefined,
+        travel: val('i-travel') || undefined,
+      };
+      activeProfile.pay = {
+        minimum: val('pay-minimum') || undefined, desired: val('pay-desired') || undefined,
+        currency: val('pay-currency') || 'USD', period: val('pay-period') || 'annual',
+      };
+      activeProfile.common = {
+        previousEmployee: val('c-previousEmployee') || undefined, relativesAtCompany: val('c-relativesAtCompany') || undefined,
+        backgroundCheck: val('c-backgroundCheck') || undefined, drugTest: val('c-drugTest') || undefined,
+        nonCompete: val('c-nonCompete') || undefined, referralSource: val('c-referralSource') || undefined,
+      };
+      activeProfile.eeo = {
+        gender: val('eeo-gender') || 'Decline to self-identify',
+        race: val('eeo-race') || 'Decline to self-identify',
+        veteran: val('eeo-veteran') || 'Decline to self-identify',
+        disability: val('eeo-disability') || 'Decline to self-identify',
+      };
+      await saveProfile(activeProfile);
+      toast('Profile saved');
+    })();
+  });
+}
+
+// ── Education handlers ─────────────────────────────────────────────────────
+function attachEducationHandlers() {
+  document.getElementById('add-education')?.addEventListener('click', () => {
+    activeProfile.education.push({ id: crypto.randomUUID(), institution: '', degree: '', field: '' });
+    render();
+  });
+
+  document.getElementById('save-education-btn')?.addEventListener('click', () => {
+    void (async () => {
+      activeProfile.education = activeProfile.education.map(e => ({
+        ...e,
+        institution: val(`edu-institution-${e.id}`),
+        degree: val(`edu-degree-${e.id}`),
+        field: val(`edu-field-${e.id}`),
+        gpa: val(`edu-gpa-${e.id}`) || undefined,
+        startDate: val(`edu-startDate-${e.id}`) || undefined,
+        endDate: val(`edu-endDate-${e.id}`) || undefined,
+      }));
+      await saveProfile(activeProfile);
+      toast('Education saved');
+    })();
+  });
+
+  attachDeleteHandlers('education');
+}
+
+// ── Experience handlers ────────────────────────────────────────────────────
+function attachExperienceHandlers() {
+  document.getElementById('add-experience')?.addEventListener('click', () => {
+    activeProfile.experience.push({ id: crypto.randomUUID(), company: '', title: '' });
+    render();
+  });
+
+  document.getElementById('save-experience-btn')?.addEventListener('click', () => {
+    void (async () => {
+      activeProfile.experience = activeProfile.experience.map(e => ({
+        ...e,
+        company: val(`exp-company-${e.id}`),
+        title: val(`exp-title-${e.id}`),
+        location: val(`exp-location-${e.id}`) || undefined,
+        startDate: val(`exp-startDate-${e.id}`) || undefined,
+        endDate: val(`exp-endDate-${e.id}`) || undefined,
+        description: val(`exp-desc-${e.id}`) || undefined,
+      }));
+      await saveProfile(activeProfile);
+      toast('Experience saved');
+    })();
+  });
+
+  attachDeleteHandlers('experience');
+}
+
+// ── Skills handlers ────────────────────────────────────────────────────────
+function attachSkillsHandlers() {
+  document.getElementById('save-skills-btn')?.addEventListener('click', () => {
+    void (async () => {
+      const splitCSV = (s: string) => s.split(',').map(x => x.trim()).filter(Boolean);
+      activeProfile.skills = splitCSV(val('skills-input'));
+      activeProfile.certifications = splitCSV(val('certs-input'));
+      activeProfile.languages = splitCSV(val('langs-input'));
+      await saveProfile(activeProfile);
+      toast('Skills saved');
+    })();
+  });
+}
+
+// ── Q&A handlers ───────────────────────────────────────────────────────────
+function attachQAHandlers() {
+  document.getElementById('add-qa')?.addEventListener('click', () => {
+    activeProfile.qa.push({ id: crypto.randomUUID(), question: '', answer: '', variants: [], keywords: [] });
+    render();
+  });
+
+  document.getElementById('save-qa-btn')?.addEventListener('click', () => {
+    void (async () => {
+      activeProfile.qa = activeProfile.qa.map(q => ({
+        ...q,
+        question: val(`qa-question-${q.id}`),
+        answer: val(`qa-answer-${q.id}`),
+        keywords: val(`qa-keywords-${q.id}`).split(',').map(k => k.trim()).filter(Boolean),
+      }));
+      await saveProfile(activeProfile);
+      toast('Q&A bank saved');
+    })();
+  });
+
+  attachDeleteHandlers('qa');
+}
+
+// ── AI handlers ────────────────────────────────────────────────────────────
+function attachAIHandlers() {
+  document.getElementById('save-ai-btn')?.addEventListener('click', () => {
+    void (async () => {
+      const key = val('ai-key');
+      const model = val('ai-model') || 'claude-sonnet-4-6';
+      let storedKey = key;
+      if (key && settings.encryptionEnabled && sessionPassphrase && settings.kdfSalt) {
+        storedKey = await encrypt(key, sessionPassphrase, settings.kdfSalt);
+      }
+      settings = await patchSettings({ anthropicKey: storedKey, anthropicModel: model });
+      toast('AI settings saved');
+    })();
+  });
+
+  document.getElementById('test-ai-btn')?.addEventListener('click', () => {
+    toast('API test — implemented in Phase 8', 'error');
+  });
+}
+
+// ── Privacy handlers ───────────────────────────────────────────────────────
+function attachPrivacyHandlers() {
+  document.getElementById('set-passphrase-btn')?.addEventListener('click', () => {
+    void (async () => {
+      const pass = val('privacy-pass');
+      const confirm = val('privacy-pass-confirm');
+      if (!pass) { toast('Enter a passphrase', 'error'); return; }
+      if (pass !== confirm) { toast('Passphrases do not match', 'error'); return; }
+      const salt = generateSalt();
+      sessionPassphrase = pass;
+      settings = await patchSettings({ encryptionEnabled: true, kdfSalt: salt });
+      toast('Passphrase set — encryption active');
+      render();
+    })();
+  });
+
+  document.getElementById('clear-passphrase-btn')?.addEventListener('click', () => {
+    void (async () => {
+      sessionPassphrase = '';
+      settings = await patchSettings({ encryptionEnabled: false, kdfSalt: undefined });
+      toast('Passphrase cleared');
+      render();
+    })();
+  });
+
+  document.getElementById('clear-all-btn')?.addEventListener('click', () => {
+    if (!confirm('Delete ALL Wayfill data? This cannot be undone.')) return;
+    void (async () => {
+      await clearAllData();
+      sessionPassphrase = '';
+      settings = AppSettingsSchema.parse({});
+      activeProfile = createBlankProfile();
+      toast('All data deleted');
+      render();
+    })();
+  });
+}
+
+// ── Import/Export handlers ─────────────────────────────────────────────────
+function attachImportExportHandlers() {
+  document.getElementById('export-btn')?.addEventListener('click', () => {
+    void (async () => {
+      const data = await exportData();
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = 'wayfill-export.json'; a.click();
+      URL.revokeObjectURL(url);
+      toast('Exported successfully');
+    })();
+  });
+
+  document.getElementById('import-file')?.addEventListener('change', (e) => {
+    void (async () => {
+      const file = (e.target as HTMLInputElement).files?.[0];
+      if (!file) return;
+      const text = await file.text();
+      const data = JSON.parse(text) as unknown;
+      await importData(data);
+      activeProfile = await getActiveProfile();
+      toast('Import complete');
+      const status = document.getElementById('import-status');
+      if (status) status.textContent = `Imported from ${file.name}`;
+    })();
+  });
+}
+
+// ── Delete entry helper ────────────────────────────────────────────────────
+function attachDeleteHandlers(type: 'education' | 'experience' | 'qa') {
+  document.querySelectorAll<HTMLButtonElement>(`.delete-entry[data-type="${type}"]`).forEach(btn => {
+    btn.addEventListener('click', () => {
+      const id = btn.dataset['id']!;
+      if (type === 'education') activeProfile.education = activeProfile.education.filter(e => e.id !== id);
+      if (type === 'experience') activeProfile.experience = activeProfile.experience.filter(e => e.id !== id);
+      if (type === 'qa') activeProfile.qa = activeProfile.qa.filter(q => q.id !== id);
+      render();
     });
   });
 }
 
-render();
+// ── Init ───────────────────────────────────────────────────────────────────
+async function init() {
+  [settings, activeProfile] = await Promise.all([loadSettings(), getActiveProfile()]);
+  // decrypt imported but used only in Phase 8 (encrypted key display)
+  void decrypt;
+  void generateSalt; // used in privacy handler
+  render();
+}
+
+void init();

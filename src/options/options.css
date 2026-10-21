@@ -208,7 +208,89 @@ body {
 
 .btn-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 16px; }
 
-/* Coming soon placeholder */
+/* ── Entry cards (education / experience / QA) ─────────────────────────── */
+.entry-card {
+  position: relative;
+  margin-bottom: 12px;
+}
+
+.entry-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+
+.entry-num {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+
+.btn-sm {
+  padding: 4px 8px !important;
+  font-size: 11px !important;
+}
+
+/* ── Hints / badges ──────────────────────────────────────────────────────── */
+.field-hint {
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.5;
+  margin-bottom: 14px;
+}
+
+.badge-muted {
+  font-size: 10px;
+  font-weight: 300;
+  color: var(--muted);
+  margin-left: 8px;
+}
+
+.status-badge {
+  display: inline-block;
+  margin-top: 12px;
+  font-size: 12px;
+  padding: 4px 10px;
+  border-radius: 20px;
+}
+
+.badge-green  { background: rgba(76,175,130,.12); color: var(--green); }
+.badge-muted-bg { background: var(--surface2); color: var(--muted); }
+
+/* ── Save status text ────────────────────────────────────────────────────── */
+.save-status {
+  font-size: 12px;
+  color: var(--muted);
+  align-self: center;
+}
+
+/* ── Toast notifications ────────────────────────────────────────────────── */
+.toast {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 10px 16px;
+  font-size: 13px;
+  color: var(--text);
+  opacity: 0;
+  transform: translateY(8px);
+  transition: opacity 0.2s, transform 0.2s;
+  z-index: 9999;
+  pointer-events: none;
+}
+.toast.toast-visible { opacity: 1; transform: translateY(0); }
+.toast.toast-success { border-color: var(--green); }
+.toast.toast-error   { border-color: var(--red);   color: var(--red); }
+
+/* ── EEO card note ───────────────────────────────────────────────────────── */
+.eeo-card { border-color: #2a2a3a; }
+
+/* ── Coming soon ─────────────────────────────────────────────────────────── */
 .coming-soon {
   display: flex;
   flex-direction: column;
@@ -216,8 +298,8 @@ body {
   justify-content: center;
   padding: 60px 20px;
   color: var(--muted);
-  gap: 10px;
+  gap: 12px;
   text-align: center;
 }
-.coming-soon svg { opacity: 0.3; }
+.coming-soon svg { opacity: 0.3; width: 32px; height: 32px; }
 .coming-soon p { font-size: 13px; }

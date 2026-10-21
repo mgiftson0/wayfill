@@ -2,30 +2,41 @@
  * Vitest global setup — mock Chrome extension APIs not available in jsdom
  */
 
-// Minimal chrome runtime stub
+// Simple in-memory store for chrome.storage.local
+const _store: Record<string, unknown> = {};
+
 const chromeMock = {
   runtime: {
     onMessage: { addListener: (_fn: unknown) => { void _fn; } },
-    sendMessage: (_msg: unknown): Promise<unknown> => Promise.resolve({}),
+    sendMessage: (_msg: unknown): Promise<unknown> => { void _msg; return Promise.resolve({}); },
     getManifest: () => ({ version: '0.1.0' }),
     openOptionsPage: (): Promise<void> => Promise.resolve(),
     onInstalled: { addListener: (_fn: unknown) => { void _fn; } },
   },
   storage: {
     local: {
-      get: (_keys: string | string[]): Promise<Record<string, unknown>> => {
-        void _keys;
-        return Promise.resolve({});
+      _data: _store,
+      get: (keys: string | string[]): Promise<Record<string, unknown>> => {
+        const keyArr = Array.isArray(keys) ? keys : [keys];
+        const result: Record<string, unknown> = {};
+        for (const k of keyArr) {
+          if (k in _store) result[k] = _store[k];
+        }
+        return Promise.resolve(result);
       },
-      set: (_items: Record<string, unknown>): Promise<void> => {
-        void _items;
+      set: (items: Record<string, unknown>): Promise<void> => {
+        Object.assign(_store, items);
         return Promise.resolve();
       },
-      remove: (_keys: string | string[]): Promise<void> => {
-        void _keys;
+      remove: (keys: string | string[]): Promise<void> => {
+        const keyArr = Array.isArray(keys) ? keys : [keys];
+        for (const k of keyArr) delete _store[k];
         return Promise.resolve();
       },
-      clear: (): Promise<void> => Promise.resolve(),
+      clear: (): Promise<void> => {
+        for (const k of Object.keys(_store)) delete _store[k];
+        return Promise.resolve();
+      },
     },
   },
   tabs: {
@@ -43,5 +54,4 @@ const chromeMock = {
   },
 };
 
-// Assign to globalThis so TypeScript and tests can use it
 (globalThis as Record<string, unknown>)['chrome'] = chromeMock;
