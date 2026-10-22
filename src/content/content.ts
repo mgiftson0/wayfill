@@ -8,9 +8,10 @@
  *   5. Observe DOM mutations for SPA navigation
  */
 import { fillForm, highlightResults } from './filler';
-import { getActiveProfile } from '../storage/storage';
+import { getActiveProfile, patchSettings } from '../storage/storage';
 import { loadSettings } from '../storage/storage';
 import { collectFillableFields } from './matcher';
+import { collectAIQuestions, formatAIQuestion, getRadioLabel } from './question-collector';
 
 // ── Job-page heuristics ────────────────────────────────────────────────────
 const JOB_PAGE_SIGNALS = [
@@ -131,6 +132,168 @@ async function handleFill() {
   }
 }
 
+// ── AI Fill handler ────────────────────────────────────────────────────────
+async function handleAIFill() {
+  if (!floatingBtn) return;
+  floatingBtn.setAttribute('data-filling', 'true');
+  showToast('wayfill: reading page questions…', 'warn');
+
+  try {
+    const settings = await loadSettings();
+    const host = window.location.hostname;
+    if (settings.siteEnabled[host] === false) {
+      showToast('Wayfill is disabled for this site.', 'warn');
+      return;
+    }
+
+    // 1. Run local fill first
+    const profile = await getActiveProfile();
+    const summary = fillForm(profile, document);
+    highlightResults(summary.results);
+
+    // 2. Collect every visible labeled field not yet filled
+    const questions = collectAIQuestions();
+
+    if (questions.length === 0) {
+      showFillToast(summary.filled, summary.review, summary.skipped);
+      return;
+    }
+
+    if (!settings.aiPreviewSites[host]) {
+      const preview: unknown = await chrome.runtime.sendMessage({ type: 'AI_FILL_PREVIEW' });
+      if (!isPreviewResponse(preview)) {
+        showToast('wayfill AI error: could not prepare privacy preview', 'error');
+        return;
+      }
+      const previewResult = preview;
+      if (!previewResult.ok || !previewResult.profile) {
+        showToast(`wayfill AI error: ${previewResult.error ?? 'could not prepare privacy preview'}`, 'error');
+        return;
+      }
+      const approved = window.confirm(
+        `The following profile information and questions will be sent to OpenRouter to generate answers. Review the information before continuing.\n\nPROFILE:\n${previewResult.profile}\n\nQUESTIONS:\n${questions.map((q, i) => `${i + 1}. ${formatAIQuestion(q)}`).join('\n')}`,
+      );
+      if (!approved) return;
+      await patchSettings({
+        aiPreviewSites: { ...settings.aiPreviewSites, [host]: true },
+      });
+    }
+
+    showToast(`wayfill: asking AI about ${questions.length} question(s)…`, 'warn');
+
+    // 3. Send all questions to service worker in one call
+    const rawResult: unknown = await chrome.runtime.sendMessage({
+      type: 'AI_FILL',
+      payload: { questions: questions.map(formatAIQuestion) },
+    });
+    if (!isAIFillResponse(rawResult)) {
+      showToast('wayfill AI error: invalid response from service worker', 'error');
+      return;
+    }
+    const result = rawResult;
+
+    if (!result.ok) {
+      showToast(`wayfill AI error: ${result.error ?? 'unknown'}`, 'error');
+      return;
+    }
+
+    // 4. Write answers back into the fields
+    let aiCount = 0;
+    for (const [index, question] of questions.entries()) {
+      const answer = result.answers?.[index];
+      if (!answer) continue;
+      if (question.radios) {
+        const normalizedAnswer = answer.trim().toLowerCase();
+        const selected = question.radios.find((radio) =>
+          normalizeChoice(radio.value) === normalizeChoice(normalizedAnswer)
+          || normalizeChoice(getRadioLabel(radio)) === normalizeChoice(normalizedAnswer),
+        );
+        if (!selected) continue;
+        selected.click();
+        selected.checked = true;
+        selected.dispatchEvent(new Event('input', { bubbles: true }));
+        selected.dispatchEvent(new Event('change', { bubbles: true }));
+        selected.setAttribute('data-wayfill-status', 'review');
+        highlightAIField(selected);
+        aiCount++;
+        continue;
+      }
+
+      const el = question.el;
+      if (!el) continue;
+      const input = el as HTMLInputElement | HTMLTextAreaElement;
+      const proto = el.tagName === 'TEXTAREA'
+        ? window.HTMLTextAreaElement.prototype
+        : window.HTMLInputElement.prototype;
+      const descriptor: unknown = Reflect.getOwnPropertyDescriptor(proto, 'value');
+      const setter: unknown = typeof descriptor === 'object' && descriptor !== null
+        ? Reflect.get(descriptor, 'set')
+        : undefined;
+      if (typeof setter === 'function') Reflect.apply(setter, input, [answer]);
+      else input.value = answer;
+      input.dispatchEvent(new Event('input',  { bubbles: true }));
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+      el.setAttribute('data-wayfill-status', 'review');
+      highlightAIField(el);
+      aiCount++;
+    }
+
+    void chrome.runtime.sendMessage({
+      type: 'FILL_COMPLETE',
+      payload: {
+        filled: summary.filled,
+        review: summary.review + aiCount,
+        skipped: summary.skipped,
+        url: window.location.href,
+        ts: Date.now(),
+      },
+    });
+
+    showFillToast(summary.filled, summary.review + aiCount, summary.skipped);
+  } catch (err) {
+    console.error('[wayfill]', err);
+    showToast('AI fill error — check console', 'error');
+  } finally {
+    floatingBtn?.removeAttribute('data-filling');
+  }
+}
+
+// ── Collect visible labeled fields not yet filled by local matcher ─────────
+function highlightAIField(el: HTMLElement) {
+  el.style.outline = '2px solid rgba(212,168,75,0.6)';
+  el.style.outlineOffset = '2px';
+  setTimeout(() => { el.style.outline = ''; el.style.outlineOffset = ''; }, 4000);
+}
+
+function normalizeChoice(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+}
+
+function isPreviewResponse(
+  value: unknown,
+): value is { ok: boolean; profile?: string; error?: string } {
+  if (typeof value !== 'object' || value === null) return false;
+  const ok: unknown = Reflect.get(value, 'ok');
+  const profile: unknown = Reflect.get(value, 'profile');
+  const error: unknown = Reflect.get(value, 'error');
+  return typeof ok === 'boolean'
+    && (profile === undefined || typeof profile === 'string')
+    && (error === undefined || typeof error === 'string');
+}
+
+function isAIFillResponse(
+  value: unknown,
+): value is { ok: boolean; answers?: string[]; error?: string } {
+  if (typeof value !== 'object' || value === null) return false;
+  const ok: unknown = Reflect.get(value, 'ok');
+  const answers: unknown = Reflect.get(value, 'answers');
+  const error: unknown = Reflect.get(value, 'error');
+  return typeof ok === 'boolean'
+    && (answers === undefined
+      || (Array.isArray(answers) && answers.every((answer: unknown) => typeof answer === 'string')))
+    && (error === undefined || typeof error === 'string');
+}
+
 // ── Toast notification ─────────────────────────────────────────────────────
 let toastEl: HTMLElement | null = null;
 
@@ -174,12 +337,11 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   const message = msg as { type: string };
   if (message.type === 'FILL_START') {
     void handleFill().then(() => sendResponse({ ok: true }));
-    return true; // async response
+    return true;
   }
-  if (message.type === 'ANALYZE_JOB') {
-    const jobText = extractJobText();
-    sendResponse({ jobText });
-    return false;
+  if (message.type === 'AI_FILL_START') {
+    void handleAIFill().then(() => sendResponse({ ok: true }));
+    return true;
   }
   if (message.type === 'HIDE_FAB') {
     floatingBtn?.classList.add('hidden');
@@ -190,24 +352,6 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     return false;
   }
 });
-
-// ── Job text extractor for AI analysis ────────────────────────────────────
-function extractJobText(): string {
-  // Heuristic: find the largest text block not in a form
-  const candidates = Array.from(document.querySelectorAll<HTMLElement>(
-    'article, [class*="job"], [class*="description"], [id*="description"], main, .posting-description, .job-description',
-  ));
-
-  if (candidates.length) {
-    // Pick the one with most text
-    const best = candidates.reduce((a, b) =>
-      (a.textContent?.length ?? 0) > (b.textContent?.length ?? 0) ? a : b,
-    );
-    return best.textContent?.trim().slice(0, 6000) ?? '';
-  }
-
-  return document.body.textContent?.trim().slice(0, 6000) ?? '';
-}
 
 // ── SPA mutation observer ─────────────────────────────────────────────────
 let debounceTimer: ReturnType<typeof setTimeout> | null = null;

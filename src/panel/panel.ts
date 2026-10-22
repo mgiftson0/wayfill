@@ -65,7 +65,7 @@ async function handleAnalyze() {
     const rawMsg: unknown = await chrome.tabs.sendMessage(activeTabId, { type: 'ANALYZE_JOB' });
     const { jobText } = rawMsg as { jobText: string };
 
-    // Send to service worker → Anthropic
+    // Send to the service worker for provider-backed analysis.
     const rawResult: unknown = await chrome.runtime.sendMessage({
       type: 'ANALYZE_JOB',
       payload: { jobText, tabId: activeTabId },
@@ -73,7 +73,7 @@ async function handleAnalyze() {
     const result = rawResult as { ok: boolean; summary?: string; error?: string };
 
     if (!result.ok || !result.summary) {
-      addMessage('error', result.error ?? 'Analysis failed. Check your API key in Settings → AI.');
+      addMessage('error', result.error ?? 'Analysis failed. Check the AI provider configuration.');
       return;
     }
 

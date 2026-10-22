@@ -87,18 +87,16 @@ export interface ExportData {
   version: 1;
   exportedAt: string;
   profiles: Profile[];
-  settings: Omit<AppSettings, 'anthropicKey'>; // never export the API key
+  settings: AppSettings;
 }
 
 export async function exportData(): Promise<ExportData> {
   const [profiles, settings] = await Promise.all([loadProfiles(), loadSettings()]);
-  const { anthropicKey: _, ...safeSettings } = settings;
-  void _;
   return {
     version: 1,
     exportedAt: new Date().toISOString(),
     profiles,
-    settings: safeSettings,
+    settings,
   };
 }
 

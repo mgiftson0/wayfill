@@ -33,7 +33,7 @@ export default defineManifest({
     },
   ],
   permissions: ['storage', 'activeTab', 'scripting'],
-  host_permissions: ['<all_urls>', 'https://api.anthropic.com/*'],
+  host_permissions: ['<all_urls>', 'https://openrouter.ai/*'],
   commands: {
     autofill: {
       suggested_key: {

@@ -41,7 +41,7 @@ function makeTestProfile(): Profile {
       description: 'Built microservices.',
     }],
     skills: ['TypeScript', 'React', 'Python'],
-    certifications: ['AWS Solutions Architect'],
+    certifications: [{ id: 'cert-1', name: 'AWS Solutions Architect' }],
     languages: ['English', 'Spanish'],
     workAuth: { authorized: 'Yes', sponsorshipNow: 'No', sponsorshipFuture: 'No' },
     eeo: {

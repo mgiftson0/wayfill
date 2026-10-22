@@ -68,11 +68,11 @@ async function renderPopup() {
         </svg>
         Autofill
       </button>
-      <button class="btn btn-ghost" id="btn-analyze" ${!isEnabled ? 'disabled' : ''}>
+      <button class="btn btn-ghost" id="btn-ai-fill" ${!isEnabled ? 'disabled' : ''}>
         <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round">
-          <path d="M8 1v6l4 2"/><circle cx="8" cy="8" r="7"/>
+          <path d="M13 2l-1 3-3 1 3 1 1 3 1-3 3-1-3-1-1-3zM5 8l-.7 2L2 11l2.3.7L5 14l.7-2.3L8 11l-2.3-.7L5 8z"/>
         </svg>
-        Analyze
+        AI Fill
       </button>
     </div>
 
@@ -101,7 +101,7 @@ async function renderPopup() {
     const map = { ...siteEnabled, [currentHost]: checked };
     void patchSettings({ siteEnabled: map });
     document.getElementById('btn-fill')!.toggleAttribute('disabled', !checked);
-    document.getElementById('btn-analyze')!.toggleAttribute('disabled', !checked);
+    document.getElementById('btn-ai-fill')!.toggleAttribute('disabled', !checked);
   });
 
   document.getElementById('btn-fill')!.addEventListener('click', () => {
@@ -113,11 +113,11 @@ async function renderPopup() {
     })();
   });
 
-  document.getElementById('btn-analyze')!.addEventListener('click', () => {
+  document.getElementById('btn-ai-fill')!.addEventListener('click', () => {
     void (async () => {
       const tabId = await getActiveTabId();
       if (!tabId) return;
-      await chrome.tabs.sendMessage(tabId, { type: 'ANALYZE_JOB' });
+      await chrome.tabs.sendMessage(tabId, { type: 'AI_FILL_START' });
       window.close();
     })();
   });

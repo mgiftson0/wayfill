@@ -65,13 +65,25 @@ export const EEOSchema = z.object({
 export type EEO = z.infer<typeof EEOSchema>;
 
 // ── Common yes/no questions ────────────────────────────────────────────────
+// ── Certification entry ────────────────────────────────────────────────────
+export const CertificationEntrySchema = z.object({
+  id:        z.string(),
+  name:      z.string(),
+  issuer:    z.string().optional(),
+  url:       z.string().optional(),
+  startDate: z.string().optional(), // YYYY-MM
+  endDate:   z.string().optional(), // YYYY-MM or 'No expiry'
+});
+export type CertificationEntry = z.infer<typeof CertificationEntrySchema>;
+
 export const CommonAnswersSchema = z.object({
-  previousEmployee:    z.string().optional(), // 'Yes' | 'No' | ''
-  relativesAtCompany:  z.string().optional(),
-  backgroundCheck:     z.string().optional(),
-  drugTest:            z.string().optional(),
-  nonCompete:          z.string().optional(),
-  referralSource:      z.string().optional(),
+  previousEmployee:      z.string().optional(), // 'Yes' | 'No' | ''
+  relativesAtCompany:    z.string().optional(),
+  backgroundCheck:       z.string().optional(),
+  drugTest:              z.string().optional(),
+  nonCompete:            z.string().optional(),
+  referralSource:        z.string().optional(),
+  interviewAvailability: z.string().optional(),
 });
 export type CommonAnswers = z.infer<typeof CommonAnswersSchema>;
 
@@ -108,8 +120,9 @@ export type PayExpectations = z.infer<typeof PayExpectationsSchema>;
 
 // ── Personal info ──────────────────────────────────────────────────────────
 export const PersonalInfoSchema = z.object({
-  firstName:   z.string().default(''),
-  lastName:    z.string().default(''),
+  firstName:     z.string().default(''),
+  lastName:      z.string().default(''),
+  highestDegree: z.string().optional(),
   email:       z.string().default(''),
   phone:       z.string().default(''),
   city:        z.string().default(''),
@@ -135,7 +148,7 @@ export const ProfileSchema = z.object({
   education:      z.array(EducationEntrySchema).default([]),
   experience:     z.array(WorkExperienceEntrySchema).default([]),
   skills:         z.array(z.string()).default([]),
-  certifications: z.array(z.string()).default([]),
+  certifications: z.array(CertificationEntrySchema).default([]),
   languages:      z.array(z.string()).default([]),
   workAuth:       WorkAuthSchema.default({}),
   eeo:            EEOSchema.default({}),

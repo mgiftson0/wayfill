@@ -47,7 +47,7 @@ describe('AppSettingsSchema', () => {
     const s = AppSettingsSchema.parse({});
     expect(s.activeJobType).toBe('Full-time');
     expect(s.encryptionEnabled).toBe(false);
-    expect(s.anthropicModel).toBe('claude-sonnet-4-6');
+    expect(s).not.toHaveProperty('anthropicModel');
   });
 
   it('preserves site-enabled map', () => {

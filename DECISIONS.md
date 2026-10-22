@@ -49,8 +49,9 @@
 ### D-007: AI API calls in service worker only
 
 **Date:** 2026-10-21  
-**Decision:** All Anthropic API HTTP requests are made exclusively from the background service worker, never from content scripts.  
-**Rationale:** MV3 CSP restricts content scripts from making cross-origin requests. Centralizing in the service worker also gives a single point for rate limiting, caching, and key management. Content scripts collect page text and send it via `chrome.runtime.sendMessage`; the worker handles the actual fetch and returns the result.
+**Decision:** OpenRouter HTTP requests are made exclusively from the background service worker, never from content scripts.
+**Rationale:** MV3 CSP restricts content scripts from making cross-origin requests. Content scripts collect page questions and send them via `chrome.runtime.sendMessage`; the worker builds profile context and performs the request. AI Fill shows a one-time per-site preview before sending profile context and questions.
+**Trade-off:** A build-time API key is extractable from a distributed extension. Use `.env.local` only for local development; a hosted backend is required before distributing an extension that uses a shared key.
 
 ### D-008: ESLint zero-warnings policy
 

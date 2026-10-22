@@ -16,7 +16,7 @@ export type ProfileKey =
   | 'authorized' | 'sponsorshipNow' | 'sponsorshipFuture' | 'visaType' | 'over18' | 'clearance'
   | 'eeoGender' | 'eeoRace' | 'eeoVeteran' | 'eeoDisability'
   | 'previousEmployee' | 'relativesAtCompany' | 'backgroundCheck' | 'drugTest' | 'nonCompete'
-  | 'referralSource'
+  | 'referralSource' | 'interviewAvailability' | 'highestDegree'
   | 'salaryExpected' | 'salaryMin' | 'salaryMax' | 'salaryPeriod'
   | 'availableStart' | 'availableEnd' | 'hoursPerWeek' | 'relocation' | 'workMode' | 'travel'
   | 'jobTitle' | 'desiredRole';
@@ -70,12 +70,14 @@ export const SYNONYMS: Record<ProfileKey, string[]> = {
   eeoVeteran:         ['veteran', 'military', 'veteran status', 'military service', 'protected veteran'],
   eeoDisability:      ['disability', 'disabled', 'disability status', 'section 503'],
 
-  previousEmployee:   ['previous employee', 'former employee', 'worked here before', 'rehire', 'previously employed'],
+  previousEmployee:   ['previous employee', 'former employee', 'worked here before', 'rehire', 'previously employed', 'worked at metlife', 'worked at this company'],
   relativesAtCompany: ['relatives', 'family members', 'know anyone', 'referral relationship'],
   backgroundCheck:    ['background check', 'criminal background', 'background screening', 'consent to background'],
   drugTest:           ['drug test', 'drug screening', 'substance test', 'consent to drug'],
   nonCompete:         ['non-compete', 'non compete', 'restrictive covenant', 'currently bound'],
   referralSource:     ['how did you hear', 'source of referral', 'where did you find', 'how did you find us', 'referred by'],
+  interviewAvailability: ['interview availability', 'available for interview', 'interview times', 'days times available', 'when are you available', 'availability for interviews', 'interview schedule'],
+  highestDegree:      ['highest degree', 'highest level of education', 'highest diploma', 'degree obtained', 'highest degree obtained', 'education level', 'level of education'],
 
   salaryExpected:     ['expected salary', 'desired salary', 'compensation expectations', 'salary expectations', 'expected compensation'],
   salaryMin:          ['minimum salary', 'salary minimum', 'floor salary', 'lowest acceptable'],

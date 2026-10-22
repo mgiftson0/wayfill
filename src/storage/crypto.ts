@@ -1,6 +1,6 @@
 /**
  * AES-GCM encryption using the Web Crypto API.
- * Used to encrypt sensitive profile fields (Anthropic API key, optionally full profile)
+ * Web Crypto helpers for optional local data encryption.
  * when the user sets a passphrase. No passphrase = no encryption.
  *
  * Key derivation: PBKDF2 (SHA-256, 200 000 iterations) → 256-bit AES-GCM key.

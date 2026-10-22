@@ -86,9 +86,9 @@ wayfill/
 1. **No SSN, bank account, or password fields** are ever stored or transmitted.
 2. **EEO self-ID** answers are never sent to the AI.
 3. **AI calls** only happen when the user explicitly clicks "Analyze this job".
-4. **What-will-be-sent preview** shown before the first AI call per site.
-5. **Passphrase encryption** (AES-GCM via Web Crypto API) encrypts the Anthropic API key and optionally the entire profile when a passphrase is set.
-6. **No analytics, no telemetry, no remote code** — the only outbound requests are user-initiated calls to `api.anthropic.com`.
+4. **What-will-be-sent preview** shown before the first AI Fill call per site.
+5. **No API keys in tracked source.** A local `VITE_OPENROUTER_API_KEY` can be used during development, but build-time keys are extractable from a distributed extension; production distribution requires a hosted backend.
+6. **No analytics, no telemetry, no remote code** — AI requests are user-initiated calls to OpenRouter.
 7. **IndexedDB** for documents; `chrome.storage.local` for profile/settings.
 
 ---
@@ -143,6 +143,6 @@ wayfill/
                      ▼
 ┌─────────────────────────────────────────────────────────┐
 │             Service Worker (service-worker.ts)          │
-│  Anthropic API client · Response caching                │
+│  OpenRouter AI client                                   │
 └─────────────────────────────────────────────────────────┘
 ```

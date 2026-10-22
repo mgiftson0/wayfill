@@ -12,9 +12,6 @@ export const AppSettingsSchema = z.object({
   activeJobType:    JobTypeSchema.default('Full-time'),
   // Per-hostname enable/disable toggle
   siteEnabled:      z.record(z.boolean()).default({}),
-  // AI settings (key may be encrypted – stored as ciphertext string when encrypted)
-  anthropicKey:     z.string().optional(),
-  anthropicModel:   z.string().default('claude-sonnet-4-6'),
   // Encryption: true when a passphrase has been set
   encryptionEnabled: z.boolean().default(false),
   // Salt for PBKDF2 (base64-encoded) – stored plaintext
@@ -33,5 +30,7 @@ export const AppSettingsSchema = z.object({
   disclaimerShown: z.boolean().default(false),
   // Teach-mode mappings: hostname → fieldKey → profilePath
   teachMappings: z.record(z.record(z.string())).default({}),
+  // CV filename (file bytes stored in IndexedDB under key 'cv')
+  cvFileName: z.string().optional(),
 });
 export type AppSettings = z.infer<typeof AppSettingsSchema>;

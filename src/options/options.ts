@@ -9,7 +9,6 @@ import {
   patchSettings,
 } from '../storage/storage';
 import { createBlankProfile, type Profile } from '../storage/profile-schema';
-import { encrypt, decrypt, generateSalt } from '../storage/crypto';
 import { AppSettingsSchema } from '../storage/settings-schema';
 import type { AppSettings } from '../storage/settings-schema';
 
@@ -20,7 +19,6 @@ type Tab =
   | 'skills'
   | 'documents'
   | 'qa'
-  | 'ai'
   | 'privacy'
   | 'import-export';
 
@@ -31,7 +29,6 @@ const TABS: { id: Tab; label: string; icon: string; group: string }[] = [
   { id: 'skills',        label: 'Skills & More',   icon: iconStar(),      group: 'Profile' },
   { id: 'documents',     label: 'Documents',       icon: iconFile(),      group: 'Resources' },
   { id: 'qa',            label: 'Q&A Bank',        icon: iconChat(),      group: 'Resources' },
-  { id: 'ai',            label: 'AI Settings',     icon: iconSpark(),     group: 'Settings' },
   { id: 'privacy',       label: 'Privacy',         icon: iconShield(),    group: 'Settings' },
   { id: 'import-export', label: 'Import / Export', icon: iconArrows(),    group: 'Settings' },
 ];
@@ -47,7 +44,6 @@ function iconBriefcase() { return svg(['M21 16V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2
 function iconStar()      { return svg('M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z'); }
 function iconFile()      { return svg(['M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z', 'M14 2v6h6', 'M16 13H8', 'M16 17H8', 'M10 9H8']); }
 function iconChat()      { return svg('M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z'); }
-function iconSpark()     { return svg('M13 2L3 14h9l-1 8 10-12h-9l1-8z'); }
 function iconShield()    { return svg('M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z'); }
 function iconArrows()    { return svg(['M7 16V4m0 0L3 8m4-4l4 4', 'M17 8v12m0 0l4-4m-4 4l-4-4']); }
 function iconPlus()      { return svg(['M12 5v14', 'M5 12h14']); }
@@ -59,7 +55,6 @@ function iconSave()      { return svg(['M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5
 let activeTab: Tab = 'profile';
 let activeProfile: Profile;
 let settings: AppSettings;
-let sessionPassphrase = ''; // in-memory only, never persisted as plaintext
 
 // ── Render helpers ─────────────────────────────────────────────────────────
 function field(id: string, label: string, type: 'text' | 'email' | 'tel' | 'url' | 'password' | 'date' | 'number', value = '', placeholder = '', extra = '') {
@@ -148,6 +143,18 @@ function renderProfile(): string {
         ${field('p-country','Country','text',p.country,'United States')}
         ${field('p-address1','Street address','text',p.address1??'','')}
         ${field('p-address2','Apt / Suite','text',p.address2??'','')}
+        ${selectField('p-highestDegree','Highest degree / diploma obtained',[
+          'High School Diploma / GED',
+          'Some College',
+          'Associate\'s Degree',
+          'Bachelor\'s Degree',
+          'Master\'s Degree',
+          'MBA',
+          'J.D.',
+          'M.D.',
+          'Ph.D.',
+          'Other',
+        ],p.highestDegree??'')}
       </div>
     </div>
 
@@ -168,8 +175,8 @@ function renderProfile(): string {
       <div class="section-card-title">Work authorization</div>
       <div class="field-grid">
         ${selectField('w-authorized','Authorized to work in U.S.?',['Yes','No'],w.authorized??'')}
-        ${selectField('w-sponsorshipNow','Require sponsorship now?',['Yes','No'],w.sponsorshipNow??'')}
-        ${selectField('w-sponsorshipFuture','Require sponsorship in future?',['Yes','No'],w.sponsorshipFuture??'')}
+        ${selectField('w-sponsorshipNow','Require sponsorship or visa support now?',['Yes','No'],w.sponsorshipNow??'')}
+        ${selectField('w-sponsorshipFuture','Will you require sponsorship or visa support in the future?',['Yes','No'],w.sponsorshipFuture??'')}
         ${field('w-visaType','Visa type','text',w.visaType??'','H-1B, OPT, F-1, etc.')}
         ${selectField('w-over18','Age 18 or older?',['Yes','No'],w.over18??'')}
         ${selectField('w-clearance','Security clearance',['None','Secret','Top Secret','TS/SCI'],w.clearance??'')}
@@ -201,12 +208,15 @@ function renderProfile(): string {
     <div class="section-card">
       <div class="section-card-title">Common questions</div>
       <div class="field-grid">
-        ${selectField('c-previousEmployee','Previous employee?',['Yes','No'],c.previousEmployee??'')}
+        ${selectField('c-previousEmployee','Have you previously worked at this company (as employee or contractor)?',['Yes','No'],c.previousEmployee??'')}
         ${selectField('c-relativesAtCompany','Relatives at company?',['Yes','No'],c.relativesAtCompany??'')}
         ${selectField('c-backgroundCheck','Consent to background check?',['Yes','No'],c.backgroundCheck??'')}
         ${selectField('c-drugTest','Consent to drug test?',['Yes','No'],c.drugTest??'')}
         ${selectField('c-nonCompete','Currently under non-compete?',['Yes','No'],c.nonCompete??'')}
         ${field('c-referralSource','How did you hear about us?','text',c.referralSource??'','LinkedIn, Indeed, etc.')}
+      </div>
+      <div class="field-grid cols-1" style="margin-top:14px">
+        ${textareaField('c-interviewAvailability','Interview availability (M-F, 9am–5pm EST)',c.interviewAvailability??'','e.g. Monday–Friday, 10am–4pm EST; prefer afternoons')}
       </div>
     </div>
 
@@ -295,6 +305,7 @@ function renderExperience(): string {
 
 // ── Tab: Skills ────────────────────────────────────────────────────────────
 function renderSkills(): string {
+  const certs = activeProfile.certifications;
   return `
     <h1 class="page-title">Skills, Certifications &amp; Languages</h1>
     <p class="page-subtitle">Comma-separated lists used for keyword matching and resume gap analysis.</p>
@@ -308,12 +319,25 @@ function renderSkills(): string {
       </div>
     </div>
     <div class="section-card">
-      <div class="section-card-title">Certifications</div>
-      <div class="field-grid cols-1">
-        <div class="field">
-          <label class="field-label" for="certs-input">Certifications (comma-separated)</label>
-          <textarea id="certs-input" rows="2" placeholder="AWS Solutions Architect, PMP, CPA…">${activeProfile.certifications.join(', ')}</textarea>
-        </div>
+      <div class="section-card-title">Certifications / Licenses</div>
+      <div id="certs-list">
+        ${certs.map((c, i) => `
+          <div class="entry-card" data-cert-id="${c.id}">
+            <div class="entry-header">
+              <span class="entry-num">Certification ${i + 1}</span>
+              <button class="btn btn-ghost btn-sm delete-cert" data-id="${c.id}" aria-label="Delete">${iconTrash()}</button>
+            </div>
+            <div class="field-grid">
+              ${field(`cert-name-${c.id}`, 'Name', 'text', c.name, 'AWS Solutions Architect')}
+              ${field(`cert-issuer-${c.id}`, 'Issuing organization', 'text', c.issuer ?? '', 'Amazon Web Services')}
+              ${field(`cert-url-${c.id}`, 'Credential URL', 'url', c.url ?? '', 'https://…')}
+              ${field(`cert-startDate-${c.id}`, 'Issue date', 'date', c.startDate ?? '')}
+              ${field(`cert-endDate-${c.id}`, 'Expiry date (blank = no expiry)', 'date', c.endDate ?? '')}
+            </div>
+          </div>`).join('')}
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-ghost" id="add-cert">${iconPlus()} Add certification</button>
       </div>
     </div>
     <div class="section-card">
@@ -360,35 +384,21 @@ function renderQA(): string {
 
 // ── Tab: Documents ─────────────────────────────────────────────────────────
 function renderDocuments(): string {
+  const stored = settings.cvFileName ?? '';
   return `
     <h1 class="page-title">Documents</h1>
-    <p class="page-subtitle">Store resumes, cover letters, transcripts, and certifications (PDF/DOCX ≤ 10 MB).</p>
-    <div class="coming-soon">
-      ${iconFile()}
-      <p>Document store — implemented in Phase 6</p>
-    </div>
-  `;
-}
-
-// ── Tab: AI Settings ───────────────────────────────────────────────────────
-function renderAI(): string {
-  return `
-    <h1 class="page-title">AI Settings</h1>
-    <p class="page-subtitle">Wayfill uses your own Anthropic API key. No data is ever sent unless you click "Analyze this job".</p>
+    <p class="page-subtitle">Upload your CV/resume so Wayfill can attach it to file-upload fields automatically.</p>
     <div class="section-card">
-      <div class="section-card-title">Anthropic API key</div>
-      <div class="field-grid cols-1">
-        ${field('ai-key','API key','password','','sk-ant-…')}
-        ${field('ai-model','Model','text',settings.anthropicModel,'claude-sonnet-4-6')}
-      </div>
+      <div class="section-card-title">CV / Resume</div>
+      <p class="field-hint">Accepted: PDF, DOC, DOCX ≤ 10 MB. Stored locally — never uploaded anywhere.</p>
       <div class="btn-row">
-        <button class="btn btn-primary" id="save-ai-btn">${iconSave()} Save AI settings</button>
-        <button class="btn btn-ghost" id="test-ai-btn">Test connection</button>
+        <label class="btn btn-ghost" style="cursor:pointer">
+          ${iconFile()} Choose file
+          <input type="file" id="cv-file" accept=".pdf,.doc,.docx" style="display:none" />
+        </label>
+        ${stored ? `<button class="btn btn-danger" id="remove-cv">Remove</button>` : ''}
       </div>
-    </div>
-    <div class="section-card" style="margin-top:16px">
-      <div class="section-card-title">Privacy reminder</div>
-      <p class="field-hint">The AI call sends only the visible job posting text and a minimal subset of your profile (no EEO, no SSN-like data). A preview is shown before the first call on each site.</p>
+      <p class="save-status" id="cv-status">${stored ? `Current file: ${esc(stored)}` : 'No file uploaded yet'}</p>
     </div>
   `;
 }
@@ -397,22 +407,11 @@ function renderAI(): string {
 function renderPrivacy(): string {
   return `
     <h1 class="page-title">Privacy &amp; Security</h1>
-    <p class="page-subtitle">All data is stored locally. The only network traffic is user-initiated Anthropic API calls.</p>
+    <p class="page-subtitle">Profile data stays local unless you choose AI Fill. The first AI request on each site shows a preview of the profile details and questions sent to OpenRouter.</p>
 
     <div class="section-card">
-      <div class="section-card-title">Passphrase encryption (AES-GCM)</div>
-      <p class="field-hint">When set, your Anthropic API key is encrypted with AES-GCM using a PBKDF2-derived key. The passphrase is never stored.</p>
-      <div class="field-grid cols-1">
-        ${field('privacy-pass','New passphrase','password','','Leave blank to disable encryption')}
-        ${field('privacy-pass-confirm','Confirm passphrase','password','','')}
-      </div>
-      <div class="btn-row">
-        <button class="btn btn-primary" id="set-passphrase-btn">${iconShield()} Set passphrase</button>
-        <button class="btn btn-danger" id="clear-passphrase-btn">Clear passphrase</button>
-      </div>
-      <p class="status-badge ${settings.encryptionEnabled ? 'badge-green' : 'badge-muted'}" id="encryption-status">
-        ${settings.encryptionEnabled ? '🔒 Encryption active' : '🔓 Encryption off'}
-      </p>
+      <div class="section-card-title">AI Fill and data</div>
+      <p class="field-hint">Profile data is stored locally. AI Fill sends the profile preview and questions to OpenRouter only after you approve the first request on each site. EEO and sensitive financial/credential questions are excluded.</p>
     </div>
 
     <div class="section-card" style="margin-top:16px">
@@ -428,7 +427,7 @@ function renderPrivacy(): string {
 function renderImportExport(): string {
   return `
     <h1 class="page-title">Import / Export</h1>
-    <p class="page-subtitle">Back up or restore your entire Wayfill profile as JSON. The Anthropic API key is never included in exports.</p>
+    <p class="page-subtitle">Back up or restore your entire Wayfill profile and settings as JSON.</p>
 
     <div class="section-card">
       <div class="section-card-title">Export</div>
@@ -461,7 +460,6 @@ function renderTabContent(): string {
     case 'skills':        return renderSkills();
     case 'documents':     return renderDocuments();
     case 'qa':            return renderQA();
-    case 'ai':            return renderAI();
     case 'privacy':       return renderPrivacy();
     case 'import-export': return renderImportExport();
   }
@@ -497,8 +495,8 @@ function attachHandlers() {
     case 'education':     attachEducationHandlers(); break;
     case 'experience':    attachExperienceHandlers(); break;
     case 'skills':        attachSkillsHandlers(); break;
+    case 'documents':     attachDocumentsHandlers(); break;
     case 'qa':            attachQAHandlers(); break;
-    case 'ai':            attachAIHandlers(); break;
     case 'privacy':       attachPrivacyHandlers(); break;
     case 'import-export': attachImportExportHandlers(); break;
     default: break;
@@ -518,6 +516,7 @@ function attachProfileHandlers() {
         linkedin: val('p-linkedin') || undefined, github: val('p-github') || undefined,
         portfolio: val('p-portfolio') || undefined, otherLink: val('p-otherLink') || undefined,
         summary: val('p-summary') || undefined,
+        highestDegree: val('p-highestDegree') || undefined,
       };
       activeProfile.workAuth = {
         authorized: val('w-authorized') || undefined, sponsorshipNow: val('w-sponsorshipNow') || undefined,
@@ -538,6 +537,7 @@ function attachProfileHandlers() {
         previousEmployee: val('c-previousEmployee') || undefined, relativesAtCompany: val('c-relativesAtCompany') || undefined,
         backgroundCheck: val('c-backgroundCheck') || undefined, drugTest: val('c-drugTest') || undefined,
         nonCompete: val('c-nonCompete') || undefined, referralSource: val('c-referralSource') || undefined,
+        interviewAvailability: val('c-interviewAvailability') || undefined,
       };
       activeProfile.eeo = {
         gender: val('eeo-gender') || 'Decline to self-identify',
@@ -605,15 +605,92 @@ function attachExperienceHandlers() {
 
 // ── Skills handlers ────────────────────────────────────────────────────────
 function attachSkillsHandlers() {
+  document.getElementById('add-cert')?.addEventListener('click', () => {
+    activeProfile.certifications.push({ id: crypto.randomUUID(), name: '' });
+    render();
+  });
+
+  document.querySelectorAll<HTMLButtonElement>('.delete-cert').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const id = btn.dataset['id']!;
+      activeProfile.certifications = activeProfile.certifications.filter(c => c.id !== id);
+      render();
+    });
+  });
+
   document.getElementById('save-skills-btn')?.addEventListener('click', () => {
     void (async () => {
       const splitCSV = (s: string) => s.split(',').map(x => x.trim()).filter(Boolean);
       activeProfile.skills = splitCSV(val('skills-input'));
-      activeProfile.certifications = splitCSV(val('certs-input'));
+      activeProfile.certifications = activeProfile.certifications.map(c => ({
+        ...c,
+        name:      val(`cert-name-${c.id}`),
+        issuer:    val(`cert-issuer-${c.id}`) || undefined,
+        url:       val(`cert-url-${c.id}`) || undefined,
+        startDate: val(`cert-startDate-${c.id}`) || undefined,
+        endDate:   val(`cert-endDate-${c.id}`) || undefined,
+      }));
       activeProfile.languages = splitCSV(val('langs-input'));
       await saveProfile(activeProfile);
       toast('Skills saved');
     })();
+  });
+}
+
+// ── Documents handlers ─────────────────────────────────────────────────────
+function attachDocumentsHandlers() {
+  document.getElementById('cv-file')?.addEventListener('change', (e) => {
+    void (async () => {
+      const file = (e.target as HTMLInputElement).files?.[0];
+      if (!file) return;
+      if (file.size > 10 * 1024 * 1024) { toast('File exceeds 10 MB limit', 'error'); return; }
+      const buf = await file.arrayBuffer();
+      const db = await openCvDb();
+      await dbPut(db, file.name, buf);
+      settings = await patchSettings({ cvFileName: file.name });
+      const status = document.getElementById('cv-status');
+      if (status) status.textContent = `Current file: ${file.name}`;
+      toast('CV uploaded');
+      render();
+    })();
+  });
+
+  document.getElementById('remove-cv')?.addEventListener('click', () => {
+    void (async () => {
+      const db = await openCvDb();
+      await dbDelete(db);
+      settings = await patchSettings({ cvFileName: undefined });
+      toast('CV removed');
+      render();
+    })();
+  });
+}
+
+function openCvDb(): Promise<IDBDatabase> {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open('wayfill-cv', 1);
+    req.onupgradeneeded = () => req.result.createObjectStore('files');
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+function dbPut(db: IDBDatabase, name: string, buf: ArrayBuffer): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction('files', 'readwrite');
+    tx.objectStore('files').put(buf, 'cv');
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+    void name;
+  });
+}
+
+function dbDelete(db: IDBDatabase): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction('files', 'readwrite');
+    tx.objectStore('files').delete('cv');
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
   });
 }
 
@@ -640,56 +717,12 @@ function attachQAHandlers() {
   attachDeleteHandlers('qa');
 }
 
-// ── AI handlers ────────────────────────────────────────────────────────────
-function attachAIHandlers() {
-  document.getElementById('save-ai-btn')?.addEventListener('click', () => {
-    void (async () => {
-      const key = val('ai-key');
-      const model = val('ai-model') || 'claude-sonnet-4-6';
-      let storedKey = key;
-      if (key && settings.encryptionEnabled && sessionPassphrase && settings.kdfSalt) {
-        storedKey = await encrypt(key, sessionPassphrase, settings.kdfSalt);
-      }
-      settings = await patchSettings({ anthropicKey: storedKey, anthropicModel: model });
-      toast('AI settings saved');
-    })();
-  });
-
-  document.getElementById('test-ai-btn')?.addEventListener('click', () => {
-    toast('API test — implemented in Phase 8', 'error');
-  });
-}
-
 // ── Privacy handlers ───────────────────────────────────────────────────────
 function attachPrivacyHandlers() {
-  document.getElementById('set-passphrase-btn')?.addEventListener('click', () => {
-    void (async () => {
-      const pass = val('privacy-pass');
-      const confirm = val('privacy-pass-confirm');
-      if (!pass) { toast('Enter a passphrase', 'error'); return; }
-      if (pass !== confirm) { toast('Passphrases do not match', 'error'); return; }
-      const salt = generateSalt();
-      sessionPassphrase = pass;
-      settings = await patchSettings({ encryptionEnabled: true, kdfSalt: salt });
-      toast('Passphrase set — encryption active');
-      render();
-    })();
-  });
-
-  document.getElementById('clear-passphrase-btn')?.addEventListener('click', () => {
-    void (async () => {
-      sessionPassphrase = '';
-      settings = await patchSettings({ encryptionEnabled: false, kdfSalt: undefined });
-      toast('Passphrase cleared');
-      render();
-    })();
-  });
-
   document.getElementById('clear-all-btn')?.addEventListener('click', () => {
     if (!confirm('Delete ALL Wayfill data? This cannot be undone.')) return;
     void (async () => {
       await clearAllData();
-      sessionPassphrase = '';
       settings = AppSettingsSchema.parse({});
       activeProfile = createBlankProfile();
       toast('All data deleted');
@@ -743,9 +776,7 @@ function attachDeleteHandlers(type: 'education' | 'experience' | 'qa') {
 // ── Init ───────────────────────────────────────────────────────────────────
 async function init() {
   [settings, activeProfile] = await Promise.all([loadSettings(), getActiveProfile()]);
-  // decrypt imported but used only in Phase 8 (encrypted key display)
-  void decrypt;
-  void generateSalt; // used in privacy handler
+  // init complete
   render();
 }
 

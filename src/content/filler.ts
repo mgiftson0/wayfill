@@ -80,7 +80,7 @@ export function resolveValue(key: ProfileKey, profile: Profile): string | null {
     case 'expDescription':    return str(exp0?.description);
 
     case 'skills':            return profile.skills.join(', ') || null;
-    case 'certifications':    return profile.certifications.join(', ') || null;
+    case 'certifications':    return profile.certifications.map(c => c.name).join(', ') || null;
     case 'languages':         return profile.languages.join(', ') || null;
 
     case 'authorized':        return str(w.authorized);
@@ -101,6 +101,8 @@ export function resolveValue(key: ProfileKey, profile: Profile): string | null {
     case 'drugTest':           return str(c.drugTest);
     case 'nonCompete':         return str(c.nonCompete);
     case 'referralSource':     return str(c.referralSource);
+    case 'interviewAvailability': return str(c.interviewAvailability);
+    case 'highestDegree':      return str(p.highestDegree);
 
     case 'salaryExpected':    return str(pay.desired);
     case 'salaryMin':         return str(pay.minimum);
