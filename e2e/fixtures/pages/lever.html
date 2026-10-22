@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="UTF-8"><title>Lever-style fixture</title></head>
+<body>
+<div class="application">
+  <h2>Application for Product Manager</h2>
+  <!-- Lever uses aria-label heavily -->
+  <div class="field-group">
+    <input aria-label="Full name" name="name" type="text" placeholder="Your full name" />
+  </div>
+  <div class="field-group">
+    <input aria-label="Email address" name="email" type="email" placeholder="your@email.com" />
+  </div>
+  <div class="field-group">
+    <input aria-label="Phone number" name="phone" type="tel" placeholder="(555) 000-0000" />
+  </div>
+  <div class="field-group">
+    <input aria-label="LinkedIn URL" name="urls[LinkedIn]" type="url" placeholder="https://linkedin.com/in/…" />
+  </div>
+  <div class="field-group">
+    <input aria-label="GitHub URL" name="urls[GitHub]" type="url" placeholder="https://github.com/…" />
+  </div>
+  <div class="field-group">
+    <textarea aria-label="Cover letter" name="comments" placeholder="Why do you want to work here?"></textarea>
+  </div>
+  <!-- Custom questions -->
+  <div class="field-group">
+    <label>Are you legally authorized to work in the U.S.?</label>
+    <select name="customField[Work Authorization]">
+      <option value="">Select…</option>
+      <option value="Yes">Yes</option>
+      <option value="No">No</option>
+    </select>
+  </div>
+</div>
+</body>
+</html>

@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="UTF-8"><title>React-Select custom combobox fixture</title></head>
+<body>
+<div id="custom-form">
+  <h2>Custom Application Form</h2>
+
+  <!-- Standard inputs -->
+  <label for="applicant-name">Full Name</label>
+  <input id="applicant-name" type="text" autocomplete="name" />
+
+  <label for="applicant-email">Email Address</label>
+  <input id="applicant-email" type="email" autocomplete="email" />
+
+  <!-- React-Select style combobox for country -->
+  <label id="country-label">Country</label>
+  <div role="combobox" aria-labelledby="country-label" aria-expanded="false" tabindex="0"
+       class="react-select__control" id="country-combobox">
+    <span class="react-select__placeholder">Select country…</span>
+    <input aria-autocomplete="list" aria-label="Country" type="text" value="" readonly />
+  </div>
+  <ul role="listbox" aria-label="Country" id="country-listbox" style="display:none">
+    <li role="option">United States</li>
+    <li role="option">Canada</li>
+    <li role="option">United Kingdom</li>
+  </ul>
+
+  <!-- Yes/No radio buttons -->
+  <fieldset>
+    <legend>Are you 18 years or older?</legend>
+    <label><input type="radio" name="age_check" value="Yes" id="age-yes" /> Yes</label>
+    <label><input type="radio" name="age_check" value="No" id="age-no" /> No</label>
+  </fieldset>
+
+  <!-- Checkboxes -->
+  <fieldset>
+    <legend>I consent to a background check</legend>
+    <label><input type="checkbox" id="bg-check" name="background_check" /> I agree</label>
+  </fieldset>
+
+  <!-- File upload -->
+  <label for="resume-upload">Upload resume</label>
+  <input type="file" id="resume-upload" accept=".pdf,.doc,.docx" />
+
+  <!-- Salary -->
+  <label for="expected-salary">Expected salary (USD)</label>
+  <input id="expected-salary" type="number" placeholder="e.g. 90000" />
+</div>
+</body>
+</html>

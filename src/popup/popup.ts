@@ -1,14 +1,9 @@
 import './popup.css';
+import { loadSettings, patchSettings, getActiveProfile } from '../storage/storage';
 
 const JOB_TYPES = [
-  'Internship',
-  'Co-op',
-  'Full-time',
-  'Part-time',
-  'Contract/Temporary',
-  'New Grad/Entry Level',
-  'Apprenticeship',
-  'Seasonal',
+  'Internship', 'Co-op', 'Full-time', 'Part-time',
+  'Contract/Temporary', 'New Grad/Entry Level', 'Apprenticeship', 'Seasonal',
 ] as const;
 
 async function getActiveTabId(): Promise<number | undefined> {
@@ -19,108 +14,92 @@ async function getActiveTabId(): Promise<number | undefined> {
 async function renderPopup() {
   const app = document.getElementById('app')!;
 
-  // Load persisted state
-  const storage = await chrome.storage.local.get(['activeJobType', 'siteEnabled', 'lastSummary']);
-  const activeJobType = (storage['activeJobType'] as string) ?? 'Full-time';
-  const siteEnabled = (storage['siteEnabled'] as Record<string, boolean>) ?? {};
+  const [settings, profile] = await Promise.all([loadSettings(), getActiveProfile()]);
+  const activeJobType = settings.activeJobType;
+  const siteEnabled   = settings.siteEnabled;
+  const lastSummary   = settings.lastSummary;
 
-  // Get current site
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   const currentHost = tab?.url ? new URL(tab.url).hostname : '';
-  const isEnabled = siteEnabled[currentHost] !== false; // default on
-
-  const lastSummary = storage['lastSummary'] as {
-    filled: number;
-    review: number;
-    skipped: number;
-  } | null;
+  const isEnabled   = siteEnabled[currentHost] !== false;
+  const profileName = profile.personal.firstName
+    ? `${profile.personal.firstName} ${profile.personal.lastName}`.trim()
+    : profile.name;
 
   app.innerHTML = `
-    <header class="popup-header">
-      <div class="logo">
-        <svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <path d="M3 4h10M3 8h7M3 12h5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-          <circle cx="13" cy="11" r="2.5" stroke="currentColor" stroke-width="1.2"/>
-          <path d="M15 13.5l1.5 1.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+    <div class="popup-header">
+      <div class="logo-row">
+        <svg class="logo-icon" viewBox="0 0 16 16" fill="none">
+          <path d="M3 4h10M3 8h7M3 12h5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
         </svg>
+        <span class="wordmark">wayfill</span>
       </div>
-      <span class="wordmark">wayfill</span>
-      <div class="header-spacer"></div>
-      <button class="settings-btn" id="open-options" title="Settings" aria-label="Open settings">
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
-          <circle cx="12" cy="12" r="3"/>
-          <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/>
+      <button id="open-options" class="btn-icon" title="Settings" aria-label="Open settings">
+        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round">
+          <circle cx="10" cy="10" r="3"/><path d="M10 1v2M10 17v2M1 10h2M17 10h2M3.22 3.22l1.42 1.42M15.36 15.36l1.42 1.42M3.22 16.78l1.42-1.42M15.36 4.64l1.42-1.42"/>
         </svg>
       </button>
-    </header>
-
-    <div class="popup-body">
-      <div>
-        <div class="field-label">Job type</div>
-        <div class="select-wrapper">
-          <select id="job-type-select" aria-label="Select job type">
-            ${JOB_TYPES.map(
-              (t) => `<option value="${t}" ${t === activeJobType ? 'selected' : ''}>${t}</option>`
-            ).join('')}
-          </select>
-          <svg class="select-arrow" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <polyline points="6 9 12 15 18 9"/>
-          </svg>
-        </div>
-      </div>
-
-      <div class="actions">
-        <button class="btn btn-primary" id="btn-fill" ${!isEnabled ? 'disabled' : ''}>
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
-            <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/>
-            <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/>
-          </svg>
-          Fill application
-        </button>
-        <button class="btn btn-secondary" id="btn-analyze" ${!isEnabled ? 'disabled' : ''}>
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
-            <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
-          </svg>
-          Analyze this job
-        </button>
-      </div>
-
-      <div class="toggle-row">
-        <span class="toggle-label">Active on this site</span>
-        <label class="toggle" aria-label="Toggle Wayfill on this site">
-          <input type="checkbox" id="site-toggle" ${isEnabled ? 'checked' : ''} />
-          <span class="toggle-track"></span>
-          <span class="toggle-thumb"></span>
-        </label>
-      </div>
-
-      ${
-        lastSummary
-          ? `<div class="summary">
-          Last fill: 
-          <span class="pill pill-green">✓ ${lastSummary.filled} filled</span>
-          <span class="pill pill-yellow">⚠ ${lastSummary.review} review</span>
-          <span class="pill pill-red">✕ ${lastSummary.skipped} skipped</span>
-        </div>`
-          : ''
-      }
     </div>
 
-    <footer class="popup-footer">Alt+Shift+F to fill · <a href="#" id="open-options-footer" style="color:inherit">settings</a></footer>
+    <div class="site-row">
+      <span class="site-host" title="${currentHost}">${currentHost || 'Unknown site'}</span>
+      <label class="toggle" title="Enable/disable on this site">
+        <input type="checkbox" id="site-toggle" ${isEnabled ? 'checked' : ''} />
+        <span class="toggle-track"></span>
+      </label>
+    </div>
+
+    <div class="profile-chip">
+      <span class="profile-avatar">${profileName.charAt(0).toUpperCase() || '?'}</span>
+      <span class="profile-name">${profileName || 'No profile'}</span>
+    </div>
+
+    <div class="job-type-row">
+      <label class="field-label-sm" for="job-type-select">Job type</label>
+      <select id="job-type-select" class="select-sm">
+        ${JOB_TYPES.map((t) => `<option value="${t}" ${t === activeJobType ? 'selected' : ''}>${t}</option>`).join('')}
+      </select>
+    </div>
+
+    <div class="btn-grid">
+      <button class="btn btn-primary" id="btn-fill" ${!isEnabled ? 'disabled' : ''}>
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round">
+          <path d="M11 2l3 3L6 13l-4 1 1-4L11 2z"/>
+        </svg>
+        Autofill
+      </button>
+      <button class="btn btn-ghost" id="btn-analyze" ${!isEnabled ? 'disabled' : ''}>
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round">
+          <path d="M8 1v6l4 2"/><circle cx="8" cy="8" r="7"/>
+        </svg>
+        Analyze
+      </button>
+    </div>
+
+    ${lastSummary ? `
+    <div class="summary-row">
+      <span class="summary-pill pill-green">${lastSummary.filled} filled</span>
+      <span class="summary-pill pill-yellow">${lastSummary.review} review</span>
+      <span class="summary-pill pill-muted">${lastSummary.skipped} skipped</span>
+    </div>` : ''}
+
+    <div class="popup-footer">
+      <a href="#" id="open-options-footer" class="footer-link">Settings</a>
+      <span class="footer-sep">·</span>
+      <span class="footer-version">v0.1.0</span>
+    </div>
   `;
 
-  // ── Event listeners ────────────────────────────────────────────────────
+  // ── Handlers ───────────────────────────────────────────────────────────
   document.getElementById('job-type-select')!.addEventListener('change', (e) => {
     const val = (e.target as HTMLSelectElement).value;
-    void chrome.storage.local.set({ activeJobType: val });
+    void patchSettings({ activeJobType: val as typeof JOB_TYPES[number] });
   });
 
   document.getElementById('site-toggle')!.addEventListener('change', (e) => {
     const checked = (e.target as HTMLInputElement).checked;
-    const map = siteEnabled;
-    map[currentHost] = checked;
-    void chrome.storage.local.set({ siteEnabled: map });
-    // Re-enable/disable action buttons
+    const map = { ...siteEnabled, [currentHost]: checked };
+    void patchSettings({ siteEnabled: map });
     document.getElementById('btn-fill')!.toggleAttribute('disabled', !checked);
     document.getElementById('btn-analyze')!.toggleAttribute('disabled', !checked);
   });
@@ -143,11 +122,11 @@ async function renderPopup() {
     })();
   });
 
-  const openOptions = () => { void chrome.runtime.openOptionsPage(); };
-  document.getElementById('open-options')!.addEventListener('click', openOptions);
+  const openOpts = () => { void chrome.runtime.openOptionsPage(); };
+  document.getElementById('open-options')!.addEventListener('click', openOpts);
   document.getElementById('open-options-footer')!.addEventListener('click', (e) => {
     e.preventDefault();
-    openOptions();
+    openOpts();
   });
 }
 
