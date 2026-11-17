@@ -58,10 +58,10 @@ export const SYNONYMS: Record<ProfileKey, string[]> = {
   certifications:     ['certifications', 'certificates', 'credentials', 'licenses', 'professional certs'],
   languages:          ['languages', 'spoken languages', 'language proficiency', 'fluency'],
 
-  authorized:         ['authorized to work', 'work authorization', 'eligible to work', 'right to work', 'legally authorized', 'us work authorization'],
-  sponsorshipNow:     ['require sponsorship', 'visa sponsorship', 'need sponsorship now', 'currently require', 'sponsorship required'],
-  sponsorshipFuture:  ['future sponsorship', 'will you require sponsorship', 'sponsorship in the future'],
-  visaType:           ['visa type', 'visa status', 'immigration status', 'work visa'],
+  authorized:         ['authorized to work', 'work authorization', 'eligible to work', 'right to work', 'legally authorized', 'us work authorization', 'legally entitled to work', 'permitted to work', 'employment authorization', 'eligible for employment in the united states'],
+  sponsorshipNow:     ['require sponsorship', 'visa sponsorship', 'need sponsorship now', 'currently require', 'sponsorship required', 'require visa support', 'need immigration sponsorship', 'require employer sponsorship', 'sponsorship for employment'],
+  sponsorshipFuture:  ['future sponsorship', 'will you require sponsorship', 'sponsorship in the future', 'require sponsorship at any time', 'need sponsorship in the future', 'require visa sponsorship in future'],
+  visaType:           ['visa type', 'visa status', 'immigration status', 'work visa', 'current visa', 'work authorization type'],
   over18:             ['18 or older', 'age requirement', 'at least 18', 'legal working age', 'over 18'],
   clearance:          ['security clearance', 'clearance level', 'secret clearance', 'top secret', 'government clearance'],
 
@@ -70,12 +70,12 @@ export const SYNONYMS: Record<ProfileKey, string[]> = {
   eeoVeteran:         ['veteran', 'military', 'veteran status', 'military service', 'protected veteran'],
   eeoDisability:      ['disability', 'disabled', 'disability status', 'section 503'],
 
-  previousEmployee:   ['previous employee', 'former employee', 'worked here before', 'rehire', 'previously employed', 'worked at metlife', 'worked at this company'],
-  relativesAtCompany: ['relatives', 'family members', 'know anyone', 'referral relationship'],
-  backgroundCheck:    ['background check', 'criminal background', 'background screening', 'consent to background'],
-  drugTest:           ['drug test', 'drug screening', 'substance test', 'consent to drug'],
+  previousEmployee:   ['previous employee', 'former employee', 'worked here before', 'rehire', 'previously employed', 'worked at metlife', 'worked at this company', 'previously employed by', 'previously worked for', 'former contractor', 'employee or contractor'],
+  relativesAtCompany: ['relatives', 'family members', 'know anyone', 'referral relationship', 'relative employed', 'family member employed', 'relationship to employee'],
+  backgroundCheck:    ['background check', 'criminal background', 'background screening', 'consent to background', 'pre employment screening', 'background investigation'],
+  drugTest:           ['drug test', 'drug screening', 'substance test', 'consent to drug', 'drug screen'],
   nonCompete:         ['non-compete', 'non compete', 'restrictive covenant', 'currently bound'],
-  referralSource:     ['how did you hear', 'source of referral', 'where did you find', 'how did you find us', 'referred by'],
+  referralSource:     ['how did you hear', 'source of referral', 'where did you find', 'how did you find us', 'referred by', 'where did you learn about', 'job source', 'source of application'],
   interviewAvailability: ['interview availability', 'available for interview', 'interview times', 'days times available', 'when are you available', 'availability for interviews', 'interview schedule'],
   highestDegree:      ['highest degree', 'highest level of education', 'highest diploma', 'degree obtained', 'highest degree obtained', 'education level', 'level of education'],
 

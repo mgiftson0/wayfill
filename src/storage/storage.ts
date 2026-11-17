@@ -96,19 +96,45 @@ export async function exportData(): Promise<ExportData> {
     version: 1,
     exportedAt: new Date().toISOString(),
     profiles,
-    settings,
+    // The document bytes live in IndexedDB and are intentionally not part of
+    // the JSON export, so do not export a filename that cannot be restored.
+    settings: { ...settings, cvFileName: undefined },
   };
 }
 
 export async function importData(data: unknown): Promise<void> {
+  if (typeof data !== 'object' || data === null || Array.isArray(data)) {
+    throw new Error('Invalid import file');
+  }
   const raw = data as { version?: number; profiles?: unknown[]; settings?: unknown };
   if (raw.version !== 1) throw new Error('Unsupported export version');
+  const currentProfiles = await loadProfiles();
+  let importedProfiles: Profile[] = [];
   if (Array.isArray(raw.profiles)) {
-    const profiles = raw.profiles.flatMap((item: unknown) => {
+    importedProfiles = raw.profiles.flatMap((item: unknown) => {
       const parsed = ProfileSchema.safeParse(item);
       return parsed.success ? [parsed.data] : [];
     });
-    await saveProfiles(profiles);
+    const merged = new Map(currentProfiles.map((profile) => [profile.id, profile]));
+    for (const profile of importedProfiles) merged.set(profile.id, profile);
+    await saveProfiles(Array.from(merged.values()));
+  }
+
+  const importedSettings = AppSettingsSchema.safeParse(raw.settings);
+  if (importedSettings.success) {
+    const current = await loadSettings();
+    const imported = importedSettings.data;
+    const importedActiveProfileExists = currentProfiles.some((profile) => profile.id === imported.activeProfileId)
+      || importedProfiles.some((profile) => profile.id === imported.activeProfileId);
+    await saveSettings({
+      ...current,
+      ...imported,
+      activeProfileId: importedActiveProfileExists ? imported.activeProfileId : current.activeProfileId,
+      cvFileName: current.cvFileName,
+      siteEnabled: { ...current.siteEnabled, ...imported.siteEnabled },
+      aiPreviewSites: { ...current.aiPreviewSites, ...imported.aiPreviewSites },
+      teachMappings: { ...current.teachMappings, ...imported.teachMappings },
+    });
   }
 }
 

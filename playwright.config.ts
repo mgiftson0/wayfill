@@ -20,8 +20,8 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: 'npx serve e2e/fixtures/pages -p 9876 --no-clipboard',
-    url: 'http://localhost:9876',
+    command: './node_modules/.bin/vite e2e/fixtures/pages --host 127.0.0.1 --port 9876 --strictPort',
+    url: 'http://127.0.0.1:9876',
     reuseExistingServer: true,
     timeout: 15_000,
   },

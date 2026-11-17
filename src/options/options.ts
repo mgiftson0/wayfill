@@ -643,15 +643,21 @@ function attachDocumentsHandlers() {
     void (async () => {
       const file = (e.target as HTMLInputElement).files?.[0];
       if (!file) return;
-      if (file.size > 10 * 1024 * 1024) { toast('File exceeds 10 MB limit', 'error'); return; }
-      const buf = await file.arrayBuffer();
-      const db = await openCvDb();
-      await dbPut(db, file.name, buf);
-      settings = await patchSettings({ cvFileName: file.name });
       const status = document.getElementById('cv-status');
-      if (status) status.textContent = `Current file: ${file.name}`;
-      toast('CV uploaded');
-      render();
+      try {
+        if (!/\.(pdf|doc|docx)$/i.test(file.name)) throw new Error('Choose a PDF, DOC, or DOCX file.');
+        if (file.size > 10 * 1024 * 1024) throw new Error('File exceeds the 10 MB limit.');
+        const buf = await file.arrayBuffer();
+        const db = await openCvDb();
+        await dbPut(db, file.name, buf);
+        db.close();
+        settings = await patchSettings({ cvFileName: file.name });
+        toast('CV uploaded');
+        render();
+      } catch (error) {
+        if (status) status.textContent = error instanceof Error ? error.message : 'Could not save this document.';
+        toast(error instanceof Error ? error.message : 'Could not save this document.', 'error');
+      }
     })();
   });
 
@@ -659,6 +665,7 @@ function attachDocumentsHandlers() {
     void (async () => {
       const db = await openCvDb();
       await dbDelete(db);
+      db.close();
       settings = await patchSettings({ cvFileName: undefined });
       toast('CV removed');
       render();
@@ -749,13 +756,19 @@ function attachImportExportHandlers() {
     void (async () => {
       const file = (e.target as HTMLInputElement).files?.[0];
       if (!file) return;
-      const text = await file.text();
-      const data = JSON.parse(text) as unknown;
-      await importData(data);
-      activeProfile = await getActiveProfile();
-      toast('Import complete');
       const status = document.getElementById('import-status');
-      if (status) status.textContent = `Imported from ${file.name}`;
+      try {
+        const text = await file.text();
+        const data = JSON.parse(text) as unknown;
+        await importData(data);
+        [settings, activeProfile] = await Promise.all([loadSettings(), getActiveProfile()]);
+        toast('Import complete');
+        if (status) status.textContent = `Imported from ${file.name}`;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Could not import this file.';
+        if (status) status.textContent = message;
+        toast(message, 'error');
+      }
     })();
   });
 }

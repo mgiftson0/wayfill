@@ -9,11 +9,6 @@ import { type Profile } from '../storage/profile-schema';
 import { matchField, collectFillableFields, type MatchResult } from './matcher';
 import type { ProfileKey } from './synonyms';
 
-function cssEscape(s: string): string {
-  if (typeof CSS !== 'undefined' && CSS.escape) return CSS.escape(s);
-  return s.replace(/[!"#$%&'()*+,./:;<=>?@[\\\]^`{|}~]/g, '\\$&').replace(/^\d/, '\\3$& ');
-}
-
 export interface FillResult {
   element: HTMLElement;
   match: MatchResult;
@@ -150,61 +145,62 @@ function nativeSet(el: HTMLInputElement | HTMLTextAreaElement, value: string) {
 }
 
 // ── Fill a <select> element ────────────────────────────────────────────────
+function normalizeChoice(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+}
+
 function fillSelect(el: HTMLSelectElement, value: string): boolean {
-  const norm = value.toLowerCase().trim();
-  // Try exact match first, then partial
-  for (let attempt = 0; attempt < 2; attempt++) {
-    for (const opt of Array.from(el.options)) {
-      const optNorm = opt.text.toLowerCase().trim();
-      const optVal  = opt.value.toLowerCase().trim();
-      const match = attempt === 0
-        ? (optNorm === norm || optVal === norm)
-        : (optNorm.includes(norm) || norm.includes(optNorm));
-      if (match) {
-        el.value = opt.value;
-        el.dispatchEvent(new Event('change', { bubbles: true }));
-        return true;
-      }
-    }
-  }
-  return false;
+  const norm = normalizeChoice(value);
+  const options = Array.from(el.options).filter((option) => !option.disabled && option.value !== '');
+  const exact = options.find((opt) => normalizeChoice(opt.text) === norm || normalizeChoice(opt.value) === norm);
+  // Partial matches are safe only when they identify one option. This avoids
+  // turning answers like "No" into "Not applicable" or "No preference".
+  const partial = options.filter((opt) => {
+    const text = normalizeChoice(opt.text);
+    const val = normalizeChoice(opt.value);
+    if ((norm === 'yes' || norm === 'no') && /^(?:no preference|not applicable|not specified)$/.test(text)) return false;
+    return text.includes(norm) || norm.includes(text) || val.includes(norm) || norm.includes(val);
+  });
+  const selected = exact ?? (partial.length === 1 ? partial[0] : undefined);
+  if (!selected) return false;
+  // eslint-disable-next-line @typescript-eslint/unbound-method
+  const setter = Object.getOwnPropertyDescriptor(window.HTMLSelectElement.prototype, 'value')?.set;
+  if (setter) setter.call(el, selected.value);
+  else el.value = selected.value;
+  el.dispatchEvent(new Event('input', { bubbles: true }));
+  el.dispatchEvent(new Event('change', { bubbles: true }));
+  return true;
 }
 
 // ── Fill a radio group ─────────────────────────────────────────────────────
-function fillRadio(el: HTMLInputElement, value: string): boolean {
-  const norm = value.toLowerCase().trim();
+function fillRadio(el: HTMLInputElement, value: string, root: Document | Element): boolean {
+  const norm = normalizeChoice(value);
   const name = el.name;
   const radios = name
-    ? Array.from(document.querySelectorAll<HTMLInputElement>(`input[type="radio"][name="${cssEscape(name)}"]`))
+    ? Array.from(root.querySelectorAll<HTMLInputElement>('input[type="radio"]')).filter((radio) => radio.name === name)
     : [el];
-
-  for (let attempt = 0; attempt < 2; attempt++) {
-    for (const radio of radios) {
-      const radioNorm = radio.value.toLowerCase().trim();
-      const labelText = radio.id
-        ? document.querySelector<HTMLLabelElement>(`label[for="${cssEscape(radio.id)}"]`)?.textContent?.toLowerCase().trim() ?? ''
-        : '';
-      const match = attempt === 0
-        ? (radioNorm === norm || labelText === norm)
-        : (radioNorm.includes(norm) || norm.includes(radioNorm) || labelText.includes(norm));
-      if (match && !radio.checked) {
-        radio.checked = true;
-        radio.dispatchEvent(new Event('change', { bubbles: true }));
-        radio.dispatchEvent(new MouseEvent('click', { bubbles: true }));
-        return true;
-      }
-    }
+  const selected = radios.find((radio) => normalizeChoice(radio.value) === norm
+    || normalizeChoice(Array.from(radio.labels ?? []).map((label) => label.textContent ?? '').join(' ')) === norm);
+  if (!selected || selected.disabled) return false;
+  if (!selected.checked) selected.click();
+  if (!selected.checked) {
+    selected.checked = true;
+    selected.dispatchEvent(new Event('input', { bubbles: true }));
+    selected.dispatchEvent(new Event('change', { bubbles: true }));
   }
-  return false;
+  return selected.checked;
 }
 
 // ── Fill a checkbox ────────────────────────────────────────────────────────
 function fillCheckbox(el: HTMLInputElement, value: string): boolean {
   const shouldCheck = /^(yes|true|1|agree|consent)$/i.test(value.trim());
   if (el.checked !== shouldCheck) {
-    el.checked = shouldCheck;
-    el.dispatchEvent(new Event('change', { bubbles: true }));
-    el.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    el.click();
+    if (el.checked !== shouldCheck) {
+      el.checked = shouldCheck;
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+      el.dispatchEvent(new Event('change', { bubbles: true }));
+    }
   }
   return true;
 }
@@ -248,9 +244,10 @@ function fillCombobox(el: HTMLElement, value: string): boolean {
 
 // ── Main filler ────────────────────────────────────────────────────────────
 export function fillForm(profile: Profile, root: Document | Element = document): FillSummary {
-  const fields = collectFillableFields(root instanceof Document ? root : root);
+  const fields = collectFillableFields(root);
   const summary: FillSummary = { filled: 0, review: 0, skipped: 0, results: [] };
   const usedElements = new WeakSet<HTMLElement>();
+  const processedRadioGroups = new Set<string | HTMLElement>();
 
   for (const el of fields) {
     if (usedElements.has(el)) continue;
@@ -277,6 +274,14 @@ export function fillForm(profile: Profile, root: Document | Element = document):
     const tag = el.tagName;
     const type = (el as HTMLInputElement).type?.toLowerCase() ?? '';
 
+    if (tag === 'INPUT' && type === 'radio') {
+      const radio = el as HTMLInputElement;
+      const groupRoot = radio.closest<HTMLElement>('fieldset, [role="radiogroup"]');
+      const groupKey: string | HTMLElement = radio.name ? `radio:${radio.name}` : groupRoot ?? radio;
+      if (processedRadioGroups.has(groupKey)) continue;
+      processedRadioGroups.add(groupKey);
+    }
+
     try {
       if (el.getAttribute('contenteditable') === 'true') {
         filled = fillContenteditable(el, value);
@@ -285,8 +290,7 @@ export function fillForm(profile: Profile, root: Document | Element = document):
       } else if (tag === 'SELECT') {
         filled = fillSelect(el as HTMLSelectElement, value);
       } else if (tag === 'INPUT' && type === 'radio') {
-        filled = fillRadio(el as HTMLInputElement, value);
-        if (filled) usedElements.add(el);
+        filled = fillRadio(el as HTMLInputElement, value, root);
       } else if (tag === 'INPUT' && type === 'checkbox') {
         filled = fillCheckbox(el as HTMLInputElement, value);
       } else if (tag === 'INPUT' || tag === 'TEXTAREA') {

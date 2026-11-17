@@ -109,6 +109,8 @@ async function handleFill() {
     }
 
     const summary = fillForm(profile, document);
+    const documentsAttached = await fillResumeUploads();
+    summary.filled += documentsAttached;
     highlightResults(summary.results);
 
     // Report back to service worker
@@ -130,6 +132,54 @@ async function handleFill() {
   } finally {
     floatingBtn?.removeAttribute('data-filling');
   }
+}
+
+async function fillResumeUploads(): Promise<number> {
+  const inputs = Array.from(document.querySelectorAll<HTMLInputElement>('input[type="file"]'))
+    .filter((input) => !input.disabled && input.files?.length === 0 && isResumeUpload(input));
+  if (!inputs.length) return 0;
+
+  const response: unknown = await chrome.runtime.sendMessage({ type: 'GET_CV_DOCUMENT' });
+  if (!isStoredDocumentResponse(response) || !response.ok || !response.name || !response.data) return 0;
+
+  const binary = atob(response.data);
+  const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0));
+  const mime = /\.pdf$/i.test(response.name) ? 'application/pdf'
+    : /\.docx$/i.test(response.name) ? 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+      : 'application/msword';
+  const file = new File([bytes], response.name, { type: mime });
+  let count = 0;
+  for (const input of inputs) {
+    try {
+      const transfer = new DataTransfer();
+      transfer.items.add(file);
+      input.files = transfer.files;
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+      input.setAttribute('data-wayfill-status', 'filled');
+      input.style.outline = '2px solid rgba(76,175,130,0.6)';
+      input.style.outlineOffset = '2px';
+      setTimeout(() => { input.style.outline = ''; input.style.outlineOffset = ''; }, 3000);
+      if (input.files?.[0]?.name === response.name) count++;
+    } catch (err) {
+      console.warn('[wayfill] resume upload fill error', input, err);
+    }
+  }
+  return count;
+}
+
+function isResumeUpload(input: HTMLInputElement): boolean {
+  const label = [input.getAttribute('aria-label'), input.getAttribute('name'), input.id,
+    input.getAttribute('accept'), input.closest('label')?.textContent]
+    .filter(Boolean).join(' ').toLowerCase();
+  return /resume|curriculum vitae|\bcv\b/.test(label);
+}
+
+function isStoredDocumentResponse(value: unknown): value is { ok: boolean; name?: string; data?: string } {
+  return typeof value === 'object' && value !== null
+    && typeof Reflect.get(value, 'ok') === 'boolean'
+    && (Reflect.get(value, 'name') === undefined || typeof Reflect.get(value, 'name') === 'string')
+    && (Reflect.get(value, 'data') === undefined || typeof Reflect.get(value, 'data') === 'string');
 }
 
 // ── AI Fill handler ────────────────────────────────────────────────────────

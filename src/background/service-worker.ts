@@ -27,6 +27,12 @@ chrome.commands.onCommand.addListener((command) => {
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   const message = msg as { type: string; payload?: unknown };
 
+  if (message.type === 'GET_CV_DOCUMENT') {
+    void getStoredCv().then(sendResponse).catch((err: unknown) =>
+      sendResponse({ ok: false, error: String(err) }));
+    return true;
+  }
+
   if (message.type === 'FILL_COMPLETE') {
     const p = message.payload as { filled: number; review: number; skipped: number; url: string; ts: number };
     void patchSettings({ lastSummary: { ...p } });
@@ -59,6 +65,30 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     return true;
   }
 });
+
+async function getStoredCv(): Promise<{ ok: boolean; name?: string; data?: string; error?: string }> {
+  const settings = await loadSettings();
+  if (!settings.cvFileName) return { ok: false, error: 'No resume is saved in Wayfill.' };
+  const db = await new Promise<IDBDatabase>((resolve, reject) => {
+    const request = indexedDB.open('wayfill-cv', 1);
+    request.onupgradeneeded = () => request.result.createObjectStore('files');
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+  const buffer = await new Promise<ArrayBuffer | undefined>((resolve, reject) => {
+    const request = db.transaction('files', 'readonly').objectStore('files').get('cv');
+    request.onsuccess = () => resolve(request.result as ArrayBuffer | undefined);
+    request.onerror = () => reject(request.error);
+  });
+  db.close();
+  if (!buffer) return { ok: false, error: 'The saved resume file could not be found.' };
+  const bytes = new Uint8Array(buffer);
+  let binary = '';
+  for (let offset = 0; offset < bytes.length; offset += 0x8000) {
+    binary += String.fromCharCode(...bytes.subarray(offset, offset + 0x8000));
+  }
+  return { ok: true, name: settings.cvFileName, data: btoa(binary) };
+}
 
 function buildProfileContext(profile: Profile): string {
   const p = profile.personal;

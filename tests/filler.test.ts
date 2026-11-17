@@ -157,6 +157,29 @@ describe('fillForm', () => {
     expect(select.value).toBe('Yes');
   });
 
+  it('fills a native radio group once and leaves the selected answer checked', () => {
+    document.body.innerHTML = `
+      <fieldset>
+        <legend>Are you authorized to work in the United States?</legend>
+        <label><input type="radio" name="authorization" value="1" /> Yes</label>
+        <label><input type="radio" name="authorization" value="0" /> No</label>
+      </fieldset>
+    `;
+    const summary = fillForm(profile, document);
+    const radios = Array.from(document.querySelectorAll<HTMLInputElement>('input[type="radio"]'));
+    expect(radios.map((radio) => radio.checked)).toEqual([true, false]);
+    expect(summary.filled + summary.review).toBe(1);
+  });
+
+  it('does not choose an ambiguous dropdown option from a partial answer', () => {
+    document.body.innerHTML = `
+      <label for="auth">Authorized to work in the US?</label>
+      <select id="auth"><option value="">Select</option><option value="na">Not applicable</option><option value="no-pref">No preference</option></select>
+    `;
+    fillForm(profile, document);
+    expect((document.getElementById('auth') as HTMLSelectElement).value).toBe('');
+  });
+
   it('fills multiple fields and returns correct counts', () => {
     document.body.innerHTML = `
       <label for="f1">First Name</label><input id="f1" type="text" />

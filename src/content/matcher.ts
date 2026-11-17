@@ -46,7 +46,7 @@ const SCORE = {
   ID_EXACT:             55,
   LABEL_PARTIAL:        40,
   SYNONYM_PARTIAL:      35,
-  NEARBY_TEXT:          25,
+  NEARBY_TEXT:          55,
 };
 
 // ── Normalise a string for comparison ─────────────────────────────────────
@@ -67,9 +67,13 @@ function cssEscape(s: string): string {
 
 // ── Extract visible label text for an element ─────────────────────────────
 function getLabelText(el: HTMLElement): string {
-  // 1. <label for="id">
+  // 1. Native labels (works for wrapping and explicit labels, including shadow roots).
+  const nativeLabels = (el as HTMLInputElement).labels;
+  if (nativeLabels?.length) return Array.from(nativeLabels).map((label) => label.textContent?.trim() ?? '').join(' ');
+  // 2. <label for="id">
   if (el.id) {
-    const label = document.querySelector<HTMLLabelElement>(`label[for="${cssEscape(el.id)}"]`);
+    const tree = el.getRootNode() as Document | ShadowRoot;
+    const label = tree.querySelector<HTMLLabelElement>(`label[for="${cssEscape(el.id)}"]`);
     if (label) return label.textContent?.trim() ?? '';
   }
   // 2. Wrapping <label>
@@ -78,7 +82,7 @@ function getLabelText(el: HTMLElement): string {
   // 3. aria-labelledby
   const labelledBy = el.getAttribute('aria-labelledby');
   if (labelledBy) {
-    const texts = labelledBy.split(/\s+/).map(id => document.getElementById(id)?.textContent?.trim()).filter(Boolean);
+    const texts = labelledBy.split(/\s+/).map(id => el.ownerDocument.getElementById(id)?.textContent?.trim()).filter(Boolean);
     if (texts.length) return texts.join(' ');
   }
   // 4. Adjacent text node / sibling span/div
@@ -97,6 +101,15 @@ function getLabelText(el: HTMLElement): string {
 // ── Near-text extractor for nearby DOM context ─────────────────────────────
 function getNearbyText(el: HTMLElement): string {
   const parts: string[] = [];
+  const radioGroup = el.closest('[role="radiogroup"]');
+  if (radioGroup) {
+    const labelledBy = radioGroup.getAttribute('aria-labelledby');
+    if (labelledBy) {
+      parts.push(labelledBy.split(/\s+/).map((id) => el.ownerDocument.getElementById(id)?.textContent?.trim() ?? '').join(' '));
+    }
+    const groupLabel = radioGroup.getAttribute('aria-label');
+    if (groupLabel) parts.push(groupLabel);
+  }
   // fieldset legend
   const fieldset = el.closest('fieldset');
   if (fieldset) {
@@ -221,7 +234,6 @@ const FILLABLE_SELECTORS = [
   'textarea',
   'select',
   '[role="combobox"]',
-  '[role="listbox"]',
   '[contenteditable="true"]',
 ].join(', ');
 
@@ -231,6 +243,7 @@ export function collectFillableFields(root: Document | ShadowRoot | Element = do
   for (const el of els) {
     // Skip hidden, honeypot, payment fields
     if (isHoneypot(el) || isPaymentField(el)) continue;
+    if (el.matches(':disabled, [aria-disabled="true"]') || el.closest('[hidden], [aria-hidden="true"]')) continue;
     const style = window.getComputedStyle(el);
     if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0') continue;
     results.push(el);

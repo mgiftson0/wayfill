@@ -8,6 +8,7 @@ import {
   EEOSchema,
 } from '@/storage/profile-schema';
 import { AppSettingsSchema } from '@/storage/settings-schema';
+import { importData, loadProfiles, loadSettings, saveProfile } from '@/storage/storage';
 
 describe('ProfileSchema', () => {
   it('parses a blank profile with defaults', () => {
@@ -64,5 +65,20 @@ describe('Storage helpers (mock)', () => {
 
   it('chrome mock is available', () => {
     expect(chrome.storage.local).toBeDefined();
+  });
+
+  it('imports profiles without deleting existing profiles and restores the active profile', async () => {
+    const existing = createBlankProfile();
+    await saveProfile(existing);
+    const imported = createBlankProfile('Internship');
+
+    await importData({
+      version: 1,
+      profiles: [imported],
+      settings: { activeProfileId: imported.id, activeJobType: 'Internship' },
+    });
+
+    expect((await loadProfiles()).map((profile) => profile.id)).toEqual([existing.id, imported.id]);
+    expect((await loadSettings()).activeProfileId).toBe(imported.id);
   });
 });
